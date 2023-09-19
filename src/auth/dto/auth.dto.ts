@@ -27,11 +27,10 @@ export class UserCreationDto {
   @ApiProperty()
   password: string;
   @ApiProperty()
-  @IsEmail()
+
   email: string;
   @ApiProperty()
-  @IsNumberString()
-  @IsNumberString()
+
   mobile_no: string;
   @ApiProperty()
 

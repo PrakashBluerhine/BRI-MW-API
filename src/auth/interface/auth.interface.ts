@@ -13,6 +13,8 @@ export interface IAuthService {
   resetLink(email:any):Promise<any>;
   resetLinkValidation(token:any):Promise<any>;
   resetPassword(reset:UserResetRequestDto):Promise<any>;
+  // user_list_table(dto:UserListRequestDto):Promise<any>;
+  user_list_table():Promise<any>;
   customResponse(
     data: object,
     message: string,

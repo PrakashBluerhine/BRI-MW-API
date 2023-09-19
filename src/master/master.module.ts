@@ -7,7 +7,8 @@ import { MasterController } from "../master/master.controller";
 import { MasterService } from "../master/master.service";
 import { MASTER_SERVICE } from "./interface/master.interface";
 import { CustomConfigService } from "../shared/services/custom-config.service";
-import { BRI_MasterRole,BRI_OperationTaxnomy,BRI_MasterRoleHistory } from "./entities/master.entity";
+import { BRI_MasterRole,BRI_OperationTaxnomy,BRI_MasterRoleHistory,BRI_MasterDepartment,BRI_MasterEmployee,BRI_MasterEmployeeHistory,  BRI_MasterMachine,
+  BRI_MasterMachineHistory,BRI_MasterEmailAlert, BRI_MasterEmailAlertHistory, BRI_EmailAlertRecipient, BRI_EmailAlertRecipientHistory } from "./entities/master.entity";
 
 import { CommonService } from '../shared/services/common.service';
 import { JwtCustomService } from '../shared/services/jwt-custom.service';
@@ -25,7 +26,7 @@ import { Repository } from 'typeorm';
         expiresIn: new ConfigService().get('JWT_EXPIRESIN')
       }
     }),
-    TypeOrmModule.forFeature([BRI_MasterRole,BRI_OperationTaxnomy,BRI_MasterRoleHistory]),
+    TypeOrmModule.forFeature([BRI_MasterRole,BRI_OperationTaxnomy,BRI_MasterRoleHistory,BRI_MasterDepartment,BRI_MasterEmployee,BRI_MasterEmployeeHistory,BRI_MasterMachine,BRI_MasterMachineHistory,BRI_MasterEmailAlert,BRI_MasterEmailAlertHistory,BRI_EmailAlertRecipient,BRI_EmailAlertRecipientHistory]),
     SharedModule,
   ],
   providers: [

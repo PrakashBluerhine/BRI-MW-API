@@ -16,7 +16,7 @@ import {
 import { ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
 import { HttpExceptionFilter } from '../shared/exception-filters/http-exception.filter';
 import {
-  LoginUserDto,UserCreationDto, UserResetRequestDto
+  LoginUserDto,UserCreationDto, UserListRequestDto, UserResetRequestDto
 
 } from './dto/auth.dto';
 import { AUTH_SERVICE, IAuthService } from './interface/auth.interface';
@@ -117,6 +117,25 @@ export class AuthController {
         'Reset Link',
         HttpStatus.OK.toString(),
       );
+  }
+
+
+  @Get('user_list')
+  public async user_list_table(
+   
+  ): Promise<any> {
+    try {
+      let response=await this.iAuthService.user_list_table( );
+      return this.iAuthService.customResponse(
+        response,
+        'User list',
+        HttpStatus.OK.toString(),
+      );
+    
+
+    } catch (e) {
+      throw new HttpException(e, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 }
 

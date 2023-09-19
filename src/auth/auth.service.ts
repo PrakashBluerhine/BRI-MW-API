@@ -64,8 +64,8 @@ export class AuthService implements IAuthService {
   async authenticate(dto: LoginUserDto): Promise<any> {
     try {
       console.log(dto,' request');
-      console.log(decryptAESString(dto.userName),'userName');
-      console.log(decryptAESString(dto.password),'password');
+      // console.log(decryptAESString(dto.userName),'userName');
+      // console.log(decryptAESString(dto.password),'password');
       let userData = await this.userRepository.find({
         where: { UserName: (dto.userName) },
       });
@@ -146,10 +146,12 @@ export class AuthService implements IAuthService {
         let dt = new Date();
         let dbTbl = new BRI_AuthUsers();
         // dbTbl.UserId=0;
-        dbTbl.DOB = dto.dob;
+       // dbTbl.DOB = dto.dob===""?null:dto.dob;
+       if(dto.department_id>0)
         dbTbl.DepartmentId = dto.department_id;
         dbTbl.Email = dto.email;
         dbTbl.EmployeeCode = dto.employee_code;
+        if(dto.employee_id>0)
         dbTbl.EmployeeId == dto.employee_id;
         dbTbl.FirstName = dto.first_name;
         dbTbl.LastName = dto.last_name;
@@ -159,6 +161,7 @@ export class AuthService implements IAuthService {
         dbTbl.Password = bcrypt.hashSync(dto.password, 10);
         dbTbl.PasswordHash = '';
         dbTbl.ProfileImageID = 0;
+        if(dto.subsidiary_id>0)
         dbTbl.SubsidiaryId = dto.subsidiary_id;
         dbTbl.UserName = dto.username;
         dbTbl.created_by = dto.created_by;
@@ -167,7 +170,8 @@ export class AuthService implements IAuthService {
 
         let dbHis = new BRI_AuthUsersHistory();
         dbHis.UserId = savedUser.UserId;
-        dbHis.DOB = dto.dob;
+       // if(dto.dob!=null)
+      //  dbHis.DOB = dto.dob;
         dbHis.DepartmentId = dto.department_id;
         dbHis.Email = dto.email;
         dbHis.EmployeeCode = dto.employee_code;
@@ -188,7 +192,7 @@ export class AuthService implements IAuthService {
 
         let rolTbl = new BRI_AuthUserRoleMap();
         rolTbl.IsActive = 1;
-        rolTbl.MapId = 0;
+       // rolTbl.MapId = 0;
         rolTbl.RoleId = dto.role_id;
         rolTbl.UserId = savedUser.UserId;
         rolTbl.created_by = dto.created_by;
@@ -206,17 +210,19 @@ export class AuthService implements IAuthService {
         let saveRoleHis = await this.userRoleMapHisRepository.save(rolHistTbl);
         return 'User created successfully.';
       } else if (dto.user_id > 0) {
+
         let dt = new Date();
         this.userRepository.update(dto.user_id, {
           FirstName: dto.first_name,
           LastName: dto.last_name,
           Email: dto.email,
-          DOB: dto.dob,
+        //  DOB: dto.dob,
+        
           MobileNo: dto.mobile_no,
-          DepartmentId: dto.department_id,
-          SubsidiaryId: dto.subsidiary_id,
-          EmployeeCode: dto.employee_code,
-          EmployeeId: dto.employee_id,
+         // DepartmentId: dto.department_id,
+        //  SubsidiaryId: dto.subsidiary_id,
+         // EmployeeCode: dto.employee_code,
+         // EmployeeId: dto.employee_id,
           IsActive: dto.is_active,
           modified_on: dt,
           modified_by: dto.created_by,
@@ -225,7 +231,7 @@ export class AuthService implements IAuthService {
 
         let dbHis = new BRI_AuthUsersHistory();
         dbHis.UserId = dto.user_id;
-        dbHis.DOB = dto.dob;
+       // dbHis.DOB = dto.dob;
         dbHis.DepartmentId = dto.department_id;
         dbHis.Email = dto.email;
         dbHis.EmployeeCode = dto.employee_code;
@@ -244,9 +250,10 @@ export class AuthService implements IAuthService {
         await this.userHistRepository.save(dbHis);
 
         let userRoleExist = await this.userRoleMapRepository.findAndCount({
-          where: { UserId: dto.user_id, RoleId: dto.role_id },
+          where: { UserId: dto.user_id },
         });
-        if (userRoleExist[1] == 0) {
+        console.log(userRoleExist[0][0].MapId,'userRoleExist');
+       // if (userRoleExist[1] == 0) {
           await this.userRoleMapRepository.update(
             { UserId: dto.user_id },
             { RoleId: dto.role_id },
@@ -266,7 +273,7 @@ export class AuthService implements IAuthService {
           rolHistTbl.created_on = dt;
           let saveRoleHis =
             await this.userRoleMapHisRepository.save(rolHistTbl);
-        }
+      //  }
         return 'User updated successfully.';
       } else if (dto.user_id > 0 && count[1] > 0) {
         return 'User already exist.';
@@ -417,29 +424,29 @@ export class AuthService implements IAuthService {
     }
 
   }
-
-  async user_list_table(dto:UserListRequestDto):Promise<any>{
+  // user_list_table(dto:UserListRequestDto):Promise<any>;
+  async user_list_table():Promise<any>{
     try{
 
 
-      const users = await this.userRepository.createQueryBuilder("user");
-      users.innerJoin(BRI_AuthUserRoleMap,"ur","ur.userid==u.userid AND ur.isActive=1");
-      users.innerJoin(BRI_MasterRole,"mr","mr.roleid==ur.roleid AND mr.isActive=1");
-      users.where('u.isactive=1')
-      if(dto.subsidiary_id>0)
-      users.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
+      // const users = await this.userRepository.createQueryBuilder("user");
+      // users.innerJoin(BRI_AuthUserRoleMap,"ur","ur.userid==u.userid AND ur.isActive=1");
+      // users.innerJoin(BRI_MasterRole,"mr","mr.roleid==ur.roleid AND mr.isActive=1");
+      // users.where('u.isactive=1')
+      // if(dto.subsidiary_id>0)
+      // users.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
 
-      if(dto.order_by)
-      {
-        if(dto.sort=="DESC")
-        {
-        users.orderBy(dto.order_by,"DESC");
-        }else
-        {
-        users.orderBy(dto.order_by,"ASC");
-        }
-        let data=await users.getMany();
-      }
+      // if(dto.order_by)
+      // {
+      //   if(dto.sort=="DESC")
+      //   {
+      //   users.orderBy(dto.order_by,"DESC");
+      //   }else
+      //   {
+      //   users.orderBy(dto.order_by,"ASC");
+      //   }
+      //   let data=await users.getMany();
+      // }
 
 
         // let q=this.userRepository.createQueryBuilder("u");
@@ -466,6 +473,14 @@ export class AuthService implements IAuthService {
         // if(dto.subsidiary_id>0)
         // q.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
       
+
+        let param =
+        'exec BRI_USP_UserTable ' ;
+
+        let data = this.userRepository.query(param);
+
+        return data;
+
     }catch(e)
     {
       throw new HttpException(
