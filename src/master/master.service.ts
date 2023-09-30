@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Injectable,
   HttpStatus,
@@ -27,6 +28,13 @@ import {
   BRI_MasterEmailAlertHistory,
   BRI_EmailAlertRecipient,
   BRI_EmailAlertRecipientHistory,
+  BRI_OperationTaxnomy,
+  BRI_MasterMenu,
+  BRI_MasterMenuHistory,
+  BRI_MasterGroupMenu,
+  BRI_MasterGroupMenuHistory,
+  BRI_AuthRolePermission,
+  BRI_AuthRolePermissionHistory
 } from './entities/master.entity';
 import { ILike } from 'typeorm';
 import {
@@ -38,6 +46,8 @@ import {
   machineryTableDto,
   newMailAlertDto,
   emailAlertTableDto,
+  newMenuDto,
+  newRolePermissionDto,
 } from './dto/master.dto';
 
 import { MailerService } from '@nestjs-modules/mailer';
@@ -46,7 +56,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import path, { join } from 'path';
 import fs, { readFileSync } from 'fs';
 import { ApiGatewayTimeoutResponse } from '@nestjs/swagger';
-require('dotenv').config();
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 require('dotenv').config({
   path: `./environment/.env.${process.env.NODE_ENV}`,
 });
@@ -81,6 +92,20 @@ export class MasterService implements IMasterService {
     private readonly alertRecipientRepository: Repository<BRI_EmailAlertRecipient>,
     @InjectRepository(BRI_EmailAlertRecipientHistory)
     private readonly alertRecipientHistoryRepository: Repository<BRI_EmailAlertRecipientHistory>,
+    @InjectRepository(BRI_OperationTaxnomy)
+    private readonly drpTaxnomyRepository: Repository<BRI_OperationTaxnomy>,
+    @InjectRepository(BRI_MasterMenu)
+    private readonly menuMasterRepository: Repository<BRI_MasterMenu>,
+    @InjectRepository(BRI_MasterMenuHistory)
+    private readonly menuMasterHistoryRepository: Repository<BRI_MasterMenuHistory>,
+    @InjectRepository(BRI_MasterGroupMenu)
+    private readonly menuGroupRepository: Repository<BRI_MasterGroupMenu>,
+    @InjectRepository(BRI_MasterGroupMenuHistory)
+    private readonly menuGroupHistoryRepository: Repository<BRI_MasterGroupMenuHistory>,
+    @InjectRepository(BRI_AuthRolePermission)
+    private readonly authRoleRepository: Repository<BRI_AuthRolePermission>,
+    @InjectRepository(BRI_AuthRolePermissionHistory)
+    private readonly authRoleHistoryRepository: Repository<BRI_AuthRolePermissionHistory>,
     private readonly mailerService: MailerService,
   ) {
     this.secret = 'JWT_SECRET';
@@ -88,20 +113,20 @@ export class MasterService implements IMasterService {
   }
   async create_role(roleCreationDto: RoleCreationDto): Promise<any> {
     try {
-      let count = await this.roleRepository.findAndCount({
+      const count = await this.roleRepository.findAndCount({
         where: { RoleName: roleCreationDto.roleName },
       });
       if (count[1] == 0 && roleCreationDto.roleId == 0) {
-        let dt = new Date();
-        let roleTbl = new BRI_MasterRole();
+        const dt = new Date();
+        const roleTbl = new BRI_MasterRole();
         roleTbl.RoleCode = roleCreationDto.roleCode;
         roleTbl.RoleName = roleCreationDto.roleName;
         roleTbl.IsActive = roleCreationDto.isActive == 0 ? false : true;
         roleTbl.created_by = roleCreationDto.userId;
         roleTbl.created_on = dt; // new Date();
-        let storedTbl = await this.roleRepository.save(roleTbl);
+        const storedTbl = await this.roleRepository.save(roleTbl);
         //  console.log(storedTbl,'stored table');
-        let roleHistory = new BRI_MasterRoleHistory();
+        const roleHistory = new BRI_MasterRoleHistory();
         roleHistory.RoleId = storedTbl.RoleId;
         roleHistory.RoleCode = storedTbl.RoleCode;
         roleHistory.RoleName = storedTbl.RoleName;
@@ -109,26 +134,26 @@ export class MasterService implements IMasterService {
         roleHistory.IsLastRecord = 1;
         roleHistory.created_on = dt; //new Date(); //storedTbl.created_on;
         roleHistory.created_by = storedTbl.created_by;
-        let savedHistoryTbl =
+        const savedHistoryTbl =
           await this.roleHistoryRepository.save(roleHistory);
         return 'Saved successfully.';
       } else if (roleCreationDto.roleId > 0) {
-        let dt = new Date();
+        const dt = new Date();
         await this.roleHistoryRepository.update(roleCreationDto.roleId, {
           IsLastRecord: 0,
         });
-        let storedTbl = await this.roleRepository.update(
+        const storedTbl = await this.roleRepository.update(
           roleCreationDto.roleId,
           {
             RoleCode: roleCreationDto.roleCode,
             RoleName: roleCreationDto.roleName,
-            IsActive: roleCreationDto.isActive,
+            IsActive: roleCreationDto.isActive == 0 ? false : true,
             modified_by: roleCreationDto.userId,
             modified_on: dt, //new Date(),
           },
         );
 
-        let roleHistory = new BRI_MasterRoleHistory();
+        const roleHistory = new BRI_MasterRoleHistory();
         roleHistory.RoleId = roleCreationDto.roleId;
         roleHistory.RoleCode = roleCreationDto.roleCode;
         roleHistory.RoleName = roleCreationDto.roleName;
@@ -136,7 +161,7 @@ export class MasterService implements IMasterService {
         (roleHistory.created_on = dt), //new Date();
           (roleHistory.created_by = roleCreationDto.userId);
         roleHistory.IsLastRecord = 1;
-        let savedHistoryTbl =
+        const savedHistoryTbl =
           await this.roleHistoryRepository.save(roleHistory);
         return 'Updated successfully.';
       }
@@ -153,7 +178,7 @@ export class MasterService implements IMasterService {
       const skip = tblDto.start || 0;
       const field = tblDto.order_by || 'RoleName';
       const sort = tblDto.sort || 'ASC';
-      let order_by = {
+      const order_by = {
         [field]: sort,
       };
       const [result, total] = await this.roleRepository.findAndCount({
@@ -178,7 +203,7 @@ export class MasterService implements IMasterService {
         const empTbl = new BRI_MasterEmployee();
         empTbl.DepartmentId = dto.department_id;
         empTbl.Desigination = dto.desigination;
-        empTbl.EmailId=dto.email_id;
+        empTbl.EmailId = dto.email_id;
         empTbl.EmployeeCode = dto.employee_code;
         empTbl.EmployeeName = dto.employee_name;
         empTbl.IsActive = dto.isActive;
@@ -190,7 +215,7 @@ export class MasterService implements IMasterService {
           const empHistTbl = new BRI_MasterEmployeeHistory();
           empHistTbl.DepartmentId = dto.department_id;
           empHistTbl.Desigination = dto.desigination;
-          empTbl.EmailId=dto.email_id;
+          empTbl.EmailId = dto.email_id;
           empHistTbl.EmployeeCode = dto.employee_code;
           empHistTbl.EmployeeName = dto.employee_name;
           empHistTbl.IsActive = dto.isActive;
@@ -212,7 +237,7 @@ export class MasterService implements IMasterService {
             EmployeeCode: dto.employee_code,
             EmployeeName: dto.employee_name,
             Desigination: dto.desigination,
-            EmailId:dto.email_id,
+            EmailId: dto.email_id,
             DepartmentId: dto.department_id,
             modified_by: dto.userId,
             modified_on: new Date(),
@@ -225,7 +250,7 @@ export class MasterService implements IMasterService {
         empHistTbl.Desigination = dto.desigination;
         empHistTbl.EmployeeCode = dto.employee_code;
         empHistTbl.EmployeeName = dto.employee_name;
-        empHistTbl.EmailId=dto.email_id;
+        empHistTbl.EmailId = dto.email_id;
         empHistTbl.IsActive = dto.isActive;
         empHistTbl.SubsidiaryId = dto.subsidiary_id;
         empHistTbl.created_by = dto.userId;
@@ -261,9 +286,9 @@ export class MasterService implements IMasterService {
 
   async employee_list_table(dto: employeeTableDto): Promise<any> {
     try {
-      let param = 'exec BRI_USP_EmplyeeTable 0,0';
+      const param = 'exec BRI_USP_EmplyeeTable 0,0';
 
-      let data = this.employeeRepository.query(param);
+      const data = this.employeeRepository.query(param);
 
       return data;
     } catch (e) {
@@ -306,12 +331,12 @@ export class MasterService implements IMasterService {
           { IsLastRecord: 0 },
         );
 
-        await  this.machineRepository.update(dto.machine_id,{
-          MachineCode:dto.machine_code,
-          MachineName:dto.machine_name,
-          DepartmentId:dto.department_id,
-          NsMachineId:dto.nsmachine_id,
-          IsActive:dto.isActive
+        await this.machineRepository.update(dto.machine_id, {
+          MachineCode: dto.machine_code,
+          MachineName: dto.machine_name,
+          DepartmentId: dto.department_id,
+          NsMachineId: dto.nsmachine_id,
+          IsActive: dto.isActive,
         });
 
         const macHistTbl = new BRI_MasterMachineHistory();
@@ -339,9 +364,9 @@ export class MasterService implements IMasterService {
 
   async machinery_list_table(dto: machineryTableDto): Promise<any> {
     try {
-      let param = 'exec BRI_USP_MachineryTable 0,0';
+      const param = 'exec BRI_USP_MachineryTable 0,0';
 
-      let data = this.machineRepository.query(param);
+      const data = this.machineRepository.query(param);
 
       return data;
     } catch (e) {
@@ -382,7 +407,7 @@ export class MasterService implements IMasterService {
 
           if (dto.recipient.length > 0) {
             for await (const re of dto.recipient) {
-              let recipient = new BRI_EmailAlertRecipient();
+              const recipient = new BRI_EmailAlertRecipient();
               recipient.AlertId = alertDb.AlertId;
               recipient.EmployeeId = re.employee_Id;
               recipient.IsActive = 1;
@@ -390,7 +415,7 @@ export class MasterService implements IMasterService {
               recipient.created_on = new Date();
               const db = await this.alertRecipientRepository.save(recipient);
               if (db) {
-                let hist = new BRI_EmailAlertRecipientHistory();
+                const hist = new BRI_EmailAlertRecipientHistory();
                 hist.RecipientId = db.RecipientId;
                 hist.AlertId = dto.alert_id;
                 hist.EmployeeId = re.employee_Id;
@@ -436,66 +461,72 @@ export class MasterService implements IMasterService {
 
         if (dto.recipient.length > 0) {
           for await (const re of dto.recipient) {
-            const [items, totalCount]=await this.alertRecipientRepository.findAndCount({where:{AlertId:dto.alert_id,EmployeeId:re.employee_Id}});
-            if(totalCount==0)
-            {
-            let recipient = new BRI_EmailAlertRecipient();
-            recipient.AlertId = dto.alert_id;
-            recipient.EmployeeId = re.employee_Id;
-            recipient.IsActive = 1;
-            recipient.created_by = dto.userId;
-            recipient.created_on = new Date();
-            const db = await this.alertRecipientRepository.save(recipient);
-            if (db) {
-              let hist = new BRI_EmailAlertRecipientHistory();
-              hist.RecipientId = db.RecipientId;
-              hist.AlertId = dto.alert_id;
-              hist.EmployeeId = re.employee_Id;
+            const [items, totalCount] =
+              await this.alertRecipientRepository.findAndCount({
+                where: { AlertId: dto.alert_id, EmployeeId: re.employee_Id },
+              });
+            if (totalCount == 0) {
+              const recipient = new BRI_EmailAlertRecipient();
+              recipient.AlertId = dto.alert_id;
+              recipient.EmployeeId = re.employee_Id;
+              recipient.IsActive = 1;
+              recipient.created_by = dto.userId;
+              recipient.created_on = new Date();
+              const db = await this.alertRecipientRepository.save(recipient);
+              if (db) {
+                const hist = new BRI_EmailAlertRecipientHistory();
+                hist.RecipientId = db.RecipientId;
+                hist.AlertId = dto.alert_id;
+                hist.EmployeeId = re.employee_Id;
+                hist.IsLastRecord = 1;
+                hist.IsActive = 1;
+                hist.created_by = dto.userId;
+                hist.created_on = new Date();
+                await this.alertRecipientHistoryRepository.save(hist);
+              }
+            } else if (totalCount > 0 && items[0].IsActive == 0) {
+              await this.alertRecipientRepository.update(
+                { RecipientId: items[0].RecipientId },
+                { IsActive: 1 },
+              );
+
+              const hist = new BRI_EmailAlertRecipientHistory();
+              hist.RecipientId = items[0].RecipientId;
+              hist.AlertId = items[0].AlertId;
+              hist.EmployeeId = items[0].EmployeeId;
               hist.IsLastRecord = 1;
-              hist.IsActive=1;
+              hist.IsActive = 1;
               hist.created_by = dto.userId;
               hist.created_on = new Date();
               await this.alertRecipientHistoryRepository.save(hist);
             }
           }
-          else if(totalCount>0 && items[0].IsActive==0)
-          {
-            await this.alertRecipientRepository.update({RecipientId:items[0].RecipientId},{IsActive:1});
 
-            let hist = new BRI_EmailAlertRecipientHistory();
-              hist.RecipientId = items[0].RecipientId;
-              hist.AlertId = items[0].AlertId;
-              hist.EmployeeId = items[0].EmployeeId;
-              hist.IsLastRecord = 1;
-              hist.IsActive=1;
-              hist.created_by = dto.userId;
-              hist.created_on = new Date();
-              await this.alertRecipientHistoryRepository.save(hist);
-          }
-          }
+          const [items, totalCount] =
+            await this.alertRecipientRepository.findAndCount({
+              where: { AlertId: dto.alert_id, IsActive: 1 },
+            });
+          if (totalCount > 0) {
+            for await (const obj of items) {
+              const index = dto.recipient.findIndex(
+                (x: { employee_Id: number }) => x.employee_Id == obj.EmployeeId,
+              );
+              if (index < 0) {
+                await this.alertRecipientRepository.update(
+                  { RecipientId: obj.RecipientId },
+                  { IsActive: 0 },
+                );
 
-          const [items, totalCount]=await this.alertRecipientRepository.findAndCount({where:{AlertId:dto.alert_id,IsActive:1}});
-          if(totalCount>0)
-          {
-            for await(const obj of items)
-            {
-              const index=dto.recipient.findIndex((x: { employee_Id: number; })=>x.employee_Id==obj.EmployeeId);
-              if(index<0)
-              {
-                await this.alertRecipientRepository.update({RecipientId:obj.RecipientId},{IsActive:0});
-
-              let hist = new BRI_EmailAlertRecipientHistory();
-              hist.RecipientId = obj.RecipientId;
-              hist.AlertId = obj.AlertId;
-              hist.EmployeeId = obj.EmployeeId;
-              hist.IsLastRecord = 1;
-              hist.IsActive=0;
-              hist.created_by = dto.userId;
-              hist.created_on = new Date();
-              await this.alertRecipientHistoryRepository.save(hist);
+                const hist = new BRI_EmailAlertRecipientHistory();
+                hist.RecipientId = obj.RecipientId;
+                hist.AlertId = obj.AlertId;
+                hist.EmployeeId = obj.EmployeeId;
+                hist.IsLastRecord = 1;
+                hist.IsActive = 0;
+                hist.created_by = dto.userId;
+                hist.created_on = new Date();
+                await this.alertRecipientHistoryRepository.save(hist);
               }
-
-              
             }
           }
         }
@@ -511,12 +542,11 @@ export class MasterService implements IMasterService {
     }
   }
 
-
   async email_alert_list_table(dto: emailAlertTableDto): Promise<any> {
     try {
-      let param = 'exec BRI_USP_EmailAlertTable 0';
+      const param = 'exec BRI_USP_EmailAlertTable 0';
 
-      let data = this.employeeRepository.query(param);
+      const data = this.employeeRepository.query(param);
 
       return data;
     } catch (e) {
@@ -529,9 +559,9 @@ export class MasterService implements IMasterService {
 
   async email_alert_receipient_list(alert_id: number): Promise<any> {
     try {
-      let param = 'exec BRI_USP_EmailAlertRecipientList '+alert_id;
+      const param = 'exec BRI_USP_EmailAlertRecipientList ' + alert_id;
 
-      let data = this.employeeRepository.query(param);
+      const data = this.employeeRepository.query(param);
 
       return data;
     } catch (e) {
@@ -557,6 +587,321 @@ export class MasterService implements IMasterService {
     }
   }
 
+  async drp_taxnomy_list(subsidiary_id: any, type: any): Promise<any> {
+    try {
+      return await this.drpTaxnomyRepository.find({
+        select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
+        where: { IsActive: 1, TaxnomyType: type },
+      });
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async menu_add_update(dto: newMenuDto): Promise<any> {
+    try {
+      if (dto.menu_id == 0) {
+        const menuTbl = new BRI_MasterMenu();
+        menuTbl.Icon = dto.icon;
+        menuTbl.MenuName = dto.menu_name;
+        menuTbl.Url = dto.url;
+        menuTbl.SubsidiaryId = dto.subsidiary_id;
+        menuTbl.created_by = dto.userId;
+        menuTbl.created_on = new Date();
+        menuTbl.IsMainMenu = dto.isMain_menu == 0 ? false : true;
+        menuTbl.IsActive = dto.isActive == 0 ? false : true;
+        menuTbl.ActiveRecord = dto.active_record == 0 ? false : true;
+        menuTbl.EditRecord = dto.edit_record == 0 ? false : true;
+        menuTbl.ViewRecord = dto.view_record == 0 ? false : true;
+        menuTbl.NewRecord = dto.new_record == 0 ? false : true;
+        const menDb = await this.menuMasterRepository.save(menuTbl);
+        if (menDb) {
+          const menuGrpTbl = new BRI_MasterGroupMenu();
+          for await (const gr of dto.menu_group) {
+            menuGrpTbl.GroupId = gr;
+            menuGrpTbl.MenuId = menDb.MenuId;
+            menuGrpTbl.IsActive = true;
+            menuGrpTbl.created_by = dto.userId;
+            menuGrpTbl.created_on = new Date();
+            const menuGrpDb = await this.menuGroupRepository.save(menuGrpTbl);
+            if (menuGrpDb) {
+              const menuGrpTblHist = new BRI_MasterGroupMenuHistory();
+              menuGrpTblHist.GroupId = gr;
+              menuGrpTblHist.MenuId = menDb.MenuId;
+              menuGrpTblHist.GroupMenuId = menuGrpDb.GroupMenuId;
+              menuGrpTblHist.IsActive = true;
+              menuGrpTblHist.IsLastRecord = true;
+              menuGrpTblHist.created_by = dto.userId;
+              menuGrpTblHist.created_on = new Date();
+              await this.menuGroupHistoryRepository.save(menuGrpTblHist);
+            }
+          }
+
+          const menuHistTbl = new BRI_MasterMenuHistory();
+          menuHistTbl.Icon = dto.icon;
+          menuHistTbl.MenuId = menDb.MenuId;
+          menuHistTbl.MenuName = dto.menu_name;
+          menuHistTbl.Url = dto.url;
+          menuHistTbl.SubsidiaryId = dto.subsidiary_id;
+          menuHistTbl.created_by = dto.userId;
+          menuHistTbl.created_on = new Date();
+          menuHistTbl.IsMainMenu = dto.isMain_menu == 0 ? false : true;
+          menuHistTbl.IsActive = dto.isActive == 0 ? false : true;
+          menuHistTbl.ActiveRecord = dto.active_record == 0 ? false : true;
+          menuHistTbl.EditRecord = dto.edit_record == 0 ? false : true;
+          menuHistTbl.ViewRecord = dto.view_record == 0 ? false : true;
+          menuHistTbl.NewRecord = dto.new_record == 0 ? false : true;
+          await this.menuMasterHistoryRepository.save(menuHistTbl);
+        }
+        return 'Saved successfully.';
+      } else if (dto.menu_id > 0) {
+        await this.menuMasterHistoryRepository.update(
+          { MenuId: dto.menu_id, IsLastRecord: true },
+          { IsLastRecord: false },
+        );
+
+        await this.menuMasterRepository.update({MenuId:dto.menu_id}, {
+          MenuName: dto.menu_name,
+          Url: dto.url,
+          Icon: dto.icon,
+          IsActive: dto.isActive == 0 ? false : true,
+          ActiveRecord: dto.active_record == 0 ? false : true,
+          NewRecord: dto.new_record == 0 ? false : true,
+          EditRecord: dto.edit_record == 0 ? false : true,
+          ViewRecord: dto.view_record == 0 ? false : true,
+          modified_by: dto.userId,
+          modified_on: new Date(),
+        });
+
+        const menuHistTbl = new BRI_MasterMenuHistory();
+        menuHistTbl.Icon = dto.icon;
+        menuHistTbl.MenuId = dto.menu_id;
+        menuHistTbl.MenuName = dto.menu_name;
+        menuHistTbl.Url = dto.url;
+        if (dto.subsidiary_id > 0) menuHistTbl.SubsidiaryId = dto.subsidiary_id;
+        menuHistTbl.created_by = dto.userId;
+        menuHistTbl.created_on = new Date();
+        menuHistTbl.IsMainMenu = dto.isMain_menu == 0 ? false : true;
+        menuHistTbl.IsActive = dto.isActive == 0 ? false : true;
+        menuHistTbl.ActiveRecord = dto.active_record == 0 ? false : true;
+        menuHistTbl.EditRecord = dto.edit_record == 0 ? false : true;
+        menuHistTbl.ViewRecord = dto.view_record == 0 ? false : true;
+        menuHistTbl.NewRecord = dto.new_record == 0 ? false : true;
+        await this.menuMasterHistoryRepository.save(menuHistTbl);
+        const menuGroupList = await this.menuGroupRepository.find({
+          where: { MenuId: dto.menu_id },
+        });
+        for await (const gr of dto.menu_group) {
+          const obj = menuGroupList.find(
+            (x) => x.GroupId == gr && x.MenuId == dto.menu_id,
+          );
+          if (obj != null && obj.IsActive == false) {
+            await this.menuGroupRepository.update(
+              { GroupMenuId: obj.GroupMenuId,MenuId:obj.MenuId },
+              { IsActive: true },
+            );
+
+            await this.menuGroupHistoryRepository.update(
+              { GroupMenuId: obj.GroupMenuId, IsLastRecord: true },
+              { IsLastRecord: false },
+            );
+
+            const menuGrpTblHist = new BRI_MasterGroupMenuHistory();
+            menuGrpTblHist.GroupId = gr;
+            menuGrpTblHist.MenuId = obj.MenuId;
+            menuGrpTblHist.GroupMenuId = obj.GroupMenuId;
+            menuGrpTblHist.IsActive = true;
+            menuGrpTblHist.IsLastRecord = true;
+            menuGrpTblHist.created_by = dto.userId;
+            menuGrpTblHist.created_on = new Date();
+            await this.menuGroupHistoryRepository.save(menuGrpTblHist);
+          }
+        }
+        for await (const mg of menuGroupList) {
+          const index = dto.menu_group.findIndex((x) => x == mg.GroupId);
+          if (index < 0) {
+            await this.menuGroupRepository.update(
+              { GroupMenuId: mg.GroupMenuId },
+              { IsActive: true },
+            );
+            await this.menuGroupHistoryRepository.update(
+              { GroupMenuId: mg.GroupMenuId, IsLastRecord: true },
+              { IsLastRecord: false },
+            );
+            const menuGrpTblHist = new BRI_MasterGroupMenuHistory();
+            menuGrpTblHist.GroupId = mg.GroupId;
+            menuGrpTblHist.MenuId = mg.MenuId;
+            menuGrpTblHist.GroupMenuId = mg.GroupMenuId;
+            menuGrpTblHist.IsActive = false;
+            menuGrpTblHist.IsLastRecord = true;
+            menuGrpTblHist.created_by = dto.userId;
+            menuGrpTblHist.created_on = new Date();
+            await this.menuGroupHistoryRepository.save(menuGrpTblHist);
+          }
+        }
+
+        return 'Update successfully.';
+      }
+    } catch (e) {
+      console.log(e, ' error');
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async menu_table(tblDto: TableDto): Promise<any> {
+    try {
+      const take = tblDto.page_size || 10;
+      const skip = tblDto.start || 0;
+      const field = tblDto.order_by || 'MenuName';
+      const sort = tblDto.sort || 'ASC';
+      const order_by = {
+        [field]: sort,
+      };
+      const [result, total] = await this.menuMasterRepository.findAndCount({
+        where: {
+          MenuName: ILike(`%${tblDto.search}%`),
+          Url: ILike(`%${tblDto.search}%`),
+        },
+        order: order_by,
+        take: take,
+        skip: skip,
+      });
+      console.log(result, ' result');
+      return { result, total };
+    } catch (e) {
+      console.log(e, 'error');
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async menu_mapped_group_list(menu_id): Promise<any> {
+    try {
+      const qb = this.menuGroupRepository.createQueryBuilder('mg');
+      qb.innerJoin(
+        BRI_OperationTaxnomy,
+        'g',
+        'g.TaxnomyId=mg.GroupId and g.IsActive=1',
+      );
+      qb.select('g.TaxnomyID', 'GroupId');
+      qb.addSelect('g.TaxnomyCode', 'GroupCode');
+      qb.addSelect('g.TaxnomyName', 'GroupName');
+
+      qb.where('mg.IsActive = 1 AND g.TaxnomyType = :type AND mg.MenuId=:menu_id', {
+        type: 'MenuGroup',
+        menu_id:menu_id
+      });
+      const dropdown = await qb.getRawMany();
+      return dropdown;
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async role_menu_permission(dtos: newRolePermissionDto): Promise<any> {
+
+    try{
+      console.log(dtos,' permission dto');
+      for await(const dto of dtos.permission)
+      {
+      if(dto.rolePermissionId==0)
+      {
+        const perTbl=new BRI_AuthRolePermission();
+        perTbl.MenuId=dto.menuId;
+        perTbl.GroupMenuId=dto.groupMenuId;
+        perTbl.RoleId=dtos.RoleId;
+        if(dtos.subsidiary_id>0)
+        perTbl.SubsidiaryId=dtos.subsidiary_id;
+        perTbl.IsActive=dto.isActive==1?true:false;
+        perTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
+        perTbl.IsAllowNewRecord=dto.new_record==1?true:false;
+        perTbl.IsAllowViewRecord=dto.view_record==1?true:false;
+        perTbl.created_by=dtos.userId;
+        perTbl.created_on=new Date();
+        const db = await this.authRoleRepository.save(perTbl);
+        if(db)
+        {
+          const perHisTbl=new BRI_AuthRolePermissionHistory();
+          perHisTbl.MenuId=dto.MenuId;
+          perTbl.GroupMenuId=dto.groupMenuId;
+          perHisTbl.RoleId=dtos.RoleId;
+          if(dtos.subsidiary_id>0)
+          perHisTbl.SubsidiaryId=dtos.subsidiary_id;
+          perHisTbl.IsActive=dto.isActive==1?true:false;
+          perHisTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
+          perHisTbl.IsAllowNewRecord=dto.new_record==1?true:false;
+          perHisTbl.IsAllowViewRecord=dto.view_record==1?true:false;
+          perHisTbl.RolePermissionId=db.RolePermissionId;
+          perHisTbl.created_by=dtos.userId;
+          perHisTbl.created_on=new Date();
+          perHisTbl.IsLastRecord=true;
+          const dbHist=await this.authRoleHistoryRepository.insert(perHisTbl);
+        }
+      }else if(dto.rolePermissionId>0){
+        await this.authRoleHistoryRepository.update({RolePermissionId:dto.rolePermissionId,IsLastRecord:true},{
+          IsLastRecord:false});
+
+          await this.authRoleRepository.update({RolePermissionId:dto.rolePermissionId},{
+          IsActive:dto.isActive==1?true:false,
+          IsAllowEditRecord:dto.edit_record==1?true:false,
+          IsAllowNewRecord:dto.new_record==1?true:false,
+          IsAllowViewRecord:dto.view_record==1?true:false,
+          });
+
+          const perHisTbl=new BRI_AuthRolePermissionHistory();
+          perHisTbl.MenuId=dto.MenuId;
+          perHisTbl.GroupMenuId=dto.groupMenuId;
+          perHisTbl.RoleId=dtos.RoleId;
+          if(dtos.subsidiary_id>0)
+          perHisTbl.SubsidiaryId=dtos.subsidiary_id;
+          perHisTbl.IsActive=dto.isActive==1?true:false;
+          perHisTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
+          perHisTbl.IsAllowNewRecord=dto.new_record==1?true:false;
+          perHisTbl.IsAllowViewRecord=dto.view_record==1?true:false;
+          perHisTbl.RolePermissionId=dto.rolePermissionId;
+          perHisTbl.created_by=dtos.userId;
+          perHisTbl.created_on=new Date();
+          perHisTbl.IsLastRecord=true;
+          const dbHist=await this.authRoleHistoryRepository.insert(perHisTbl);
+      }
+      }
+      return "Permission saved successfully";
+      
+    }catch(e)
+    {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async menu_role_permission(dto):Promise<any>{
+    try{
+      const param = 'exec BRI_USP_RoleMenuPermission_Table ' + dto.role_id+','+dto.group_id+','+dto.subsidiary_id;
+      const data = this.employeeRepository.query(param);
+      return data;
+    }catch(e)
+    {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  
   async customResponse(
     data: object,
     message: string,

@@ -12,7 +12,7 @@ export class BRI_MasterRole {
   RoleName: string;
 
   @Column({ name: 'IsActive' })
-  IsActive: Boolean;
+  IsActive: boolean;
 
   @Column({ name: 'CreatedOn' })
   created_on: Date;
@@ -44,7 +44,6 @@ export class BRI_MasterRoleHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
-
 }
 
 @Entity({ name: 'BRI_MasterMenu' })
@@ -62,9 +61,17 @@ export class BRI_MasterMenu {
   @Column({ name: 'Icon' })
   Icon: string;
   @Column({ name: 'IsMainMenu' })
-  IsMainMenu: number;
+  IsMainMenu: boolean;
+  @Column({ name: 'NewRecord' })
+  NewRecord: boolean;
+  @Column({ name: 'EditRecord' })
+  EditRecord: boolean;
+  @Column({ name: 'ActiveRecord' })
+  ActiveRecord: boolean;
+  @Column({ name: 'ViewRecord' })
+  ViewRecord: boolean;
   @Column({ name: 'IsActive' })
-  IsActive: number;
+  IsActive: boolean;
   @Column({ name: 'CreatedOn' })
   created_on: Date;
   @Column({ name: 'CreatedBy' })
@@ -92,16 +99,23 @@ export class BRI_MasterMenuHistory {
   @Column({ name: 'Icon' })
   Icon: string;
   @Column({ name: 'IsMainMenu' })
-  IsMainMenu: number;
+  IsMainMenu: boolean;
+  @Column({ name: 'NewRecord' })
+  NewRecord: boolean;
+  @Column({ name: 'EditRecord' })
+  EditRecord: boolean;
+  @Column({ name: 'ActiveRecord' })
+  ActiveRecord: boolean;
+  @Column({ name: 'ViewRecord' })
+  ViewRecord: boolean;
   @Column({ name: 'IsActive' })
-  IsActive: number;
+  IsActive: boolean;
   @Column({ name: 'IsLastRecord' })
-  IsLastRecord: number;
+  IsLastRecord: boolean;
   @Column({ name: 'CreatedOn' })
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
-
 }
 
 @Entity({ name: 'BRI_MasterModule' })
@@ -143,7 +157,7 @@ export class BRI_MasterModuleHistory {
 
   @Column({ name: 'ModuleName' })
   ModuleName: string;
-  
+
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
 
@@ -155,6 +169,55 @@ export class BRI_MasterModuleHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
+}
+
+@Entity({ name: 'BRI_MasterGroupMenu' })
+export class BRI_MasterGroupMenu {
+  @PrimaryGeneratedColumn({ name: 'GroupMenuId' })
+  GroupMenuId: number;
+
+  @Column({ name: 'GroupId' })
+  GroupId: number;
+
+  @Column({ name: 'MenuId' })
+  MenuId: number;
+
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'ModifiedOn' })
+  modified_on: Date;
+  @Column({ name: 'ModifiedBy' })
+  modified_by: number;
+}
+
+@Entity({ name: 'BRI_MasterGroupMenuHistory' })
+export class BRI_MasterGroupMenuHistory {
+  @PrimaryGeneratedColumn({ name: 'HistoryId' })
+  HistoryId: number;
+
+  @Column({ name: 'GroupMenuId' })
+  GroupMenuId: number;
+
+  @Column({ name: 'GroupId' })
+  GroupId: number;
+
+  @Column({ name: 'MenuId' })
+  MenuId: number;
+
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'IsLastRecord' })
+  IsLastRecord: boolean;
 }
 
 @Entity({ name: 'BRI_MasterDepartment' })
@@ -195,6 +258,9 @@ export class BRI_OperationTaxnomy {
   @Column({ name: 'TaxnomyValue' })
   TaxnomyValue: number;
 
+  @Column({ name: 'TaxnomyType' })
+  TaxnomyType: string;
+
   @Column({ name: 'OrderId' })
   OrderId: number;
 
@@ -203,7 +269,8 @@ export class BRI_OperationTaxnomy {
 
   @Column({ name: 'ParentId' })
   ParentId: number;
-
+  @Column({ name: 'NetsuiteId' })
+  NetsuiteId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
 
@@ -234,6 +301,9 @@ export class BRI_OperationTaxnomyHistory {
   @Column({ name: 'TaxnomyValue' })
   TaxnomyValue: number;
 
+  @Column({ name: 'TaxnomyType' })
+  TaxnomyType: string;
+
   @Column({ name: 'OrderId' })
   OrderId: number;
 
@@ -242,7 +312,8 @@ export class BRI_OperationTaxnomyHistory {
 
   @Column({ name: 'ParentId' })
   ParentId: number;
-
+  @Column({ name: 'NetsuiteId' })
+  NetsuiteId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'IsLastRecord' })
@@ -251,7 +322,6 @@ export class BRI_OperationTaxnomyHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
-
 }
 
 @Entity({ name: 'BRI_MasterEmployee' })
@@ -271,7 +341,7 @@ export class BRI_MasterEmployee {
   @Column({ name: 'DepartmentId' })
   DepartmentId: number;
   @Column({ name: 'SubsidiaryId' })
-  SubsidiaryId : number;
+  SubsidiaryId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -304,7 +374,7 @@ export class BRI_MasterEmployeeHistory {
   DepartmentId: number;
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
-  
+
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -313,7 +383,6 @@ export class BRI_MasterEmployeeHistory {
   created_by: number;
   @Column({ name: 'IsLastRecord' })
   isLastRecord: number;
-
 }
 
 @Entity({ name: 'BRI_MasterMachine' })
@@ -329,7 +398,7 @@ export class BRI_MasterMachine {
   @Column({ name: 'DepartmentId' })
   DepartmentId: number;
   @Column({ name: 'SubsidiaryId' })
-  SubsidiaryId : number;
+  SubsidiaryId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -357,7 +426,7 @@ export class BRI_MasterMachineHistory {
   @Column({ name: 'DepartmentId' })
   DepartmentId: number;
   @Column({ name: 'SubsidiaryId' })
-  SubsidiaryId : number;
+  SubsidiaryId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'IsLastRecord' })
@@ -377,7 +446,7 @@ export class BRI_MasterEmailAlert {
   @Column({ name: 'AlertCode' })
   AlertCode: string;
   @Column({ name: 'SubsidiaryId' })
-  SubsidiaryId : number;
+  SubsidiaryId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -401,7 +470,7 @@ export class BRI_MasterEmailAlertHistory {
   @Column({ name: 'AlertCode' })
   AlertCode: string;
   @Column({ name: 'SubsidiaryId' })
-  SubsidiaryId : number;
+  SubsidiaryId: number;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -450,5 +519,69 @@ export class BRI_EmailAlertRecipientHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
- 
+}
+
+@Entity({ name: 'BRI_AuthRolePermission' })
+export class BRI_AuthRolePermission {
+  @PrimaryGeneratedColumn({ name: 'RolePermissionId' })
+  RolePermissionId: number;
+  @Column({ name: 'RoleId' })
+  RoleId: number;
+  @Column({ name: 'MenuId' })
+  MenuId: number;
+  @Column({ name: 'GroupMenuId' })
+  GroupMenuId: number;
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsAllowNewRecord' })
+  IsAllowNewRecord: boolean;
+  @Column({ name: 'IsAllowEditRecord' })
+  IsAllowEditRecord: boolean;
+  @Column({ name: 'IsAllowViewRecord' })
+  IsAllowViewRecord: boolean;
+
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+@Entity({ name: 'BRI_AuthRolePermissionHistory' })
+export class BRI_AuthRolePermissionHistory {
+  @PrimaryGeneratedColumn({ name: 'HistoryId' })
+  HistoryId: number;
+  @Column({ name: 'RolePermissionId' })
+  RolePermissionId: number;
+  @Column({ name: 'RoleId' })
+  RoleId: number;
+  @Column({ name: 'MenuId' })
+  MenuId: number;
+  @Column({ name: 'GroupMenuId' })
+  GroupMenuId: number;
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsAllowNewRecord' })
+  IsAllowNewRecord: boolean;
+  @Column({ name: 'IsAllowEditRecord' })
+  IsAllowEditRecord: boolean;
+  @Column({ name: 'IsAllowViewRecord' })
+  IsAllowViewRecord: boolean;
+  @Column({ name: 'IsAllowDeleteRecord' })
+  IsAllowDeleteRecord: boolean;
+  @Column({ name: 'IsLastRecord' })
+  IsLastRecord: boolean;
+
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
 }

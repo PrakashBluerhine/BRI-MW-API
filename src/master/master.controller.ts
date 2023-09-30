@@ -15,7 +15,18 @@ import {
 import { ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
 import { get } from 'http';
 import { HttpExceptionFilter } from '../shared/exception-filters/http-exception.filter';
-import { emailAlertTableDto, employeeTableDto, machineryTableDto, newEmployeeDto, newMachineryDto, newMailAlertDto, RoleCreationDto, TableDto } from './dto/master.dto';
+import {
+  emailAlertTableDto,
+  employeeTableDto,
+  machineryTableDto,
+  newEmployeeDto,
+  newMachineryDto,
+  newMailAlertDto,
+  newMenuDto,
+  newRolePermissionDto,
+  RoleCreationDto,
+  TableDto,
+} from './dto/master.dto';
 import { MASTER_SERVICE, IMasterService } from './interface/master.interface';
 
 @ApiTags('Master')
@@ -32,7 +43,7 @@ export class MasterController {
   public async create_role(
     @Body() roleCreationDto: RoleCreationDto,
   ): Promise<any> {
-    let response = await this.iMasterService.create_role(roleCreationDto);
+    const response = await this.iMasterService.create_role(roleCreationDto);
     return this.iMasterService.customResponse(
       response,
       'Roles added successfully',
@@ -44,7 +55,7 @@ export class MasterController {
   @UsePipes(new ValidationPipe())
   @Post('role_table')
   public async role_table(@Body() tableDto: TableDto): Promise<any> {
-    let response = await this.iMasterService.role_table(tableDto);
+    const response = await this.iMasterService.role_table(tableDto);
     return this.iMasterService.customResponse(
       response,
       'Role List!',
@@ -58,7 +69,7 @@ export class MasterController {
   public async employee_add_update(
     @Body() tableDto: newEmployeeDto,
   ): Promise<any> {
-    let response = await this.iMasterService.employee_add_update(tableDto);
+    const response = await this.iMasterService.employee_add_update(tableDto);
     return this.iMasterService.customResponse(
       response,
       'Employee creation!',
@@ -71,7 +82,7 @@ export class MasterController {
   public async department_list(
     @Param('subsidiary_id') subsidiary_id: number,
   ): Promise<any> {
-    let response = await this.iMasterService.department_list(subsidiary_id);
+    const response = await this.iMasterService.department_list(subsidiary_id);
     return this.iMasterService.customResponse(
       response,
       'Department List!',
@@ -82,9 +93,9 @@ export class MasterController {
   @ApiBody({ type: employeeTableDto })
   @UsePipes(new ValidationPipe())
   @Post('employee_list_table')
-  public async employee_list_table(dto:employeeTableDto): Promise<any> {
+  public async employee_list_table(dto: employeeTableDto): Promise<any> {
     try {
-      let response = await this.iMasterService.employee_list_table(dto);
+      const response = await this.iMasterService.employee_list_table(dto);
       return this.iMasterService.customResponse(
         response,
         'Department List!',
@@ -101,7 +112,7 @@ export class MasterController {
   public async machinery_add_update(
     @Body() Dto: newMachineryDto,
   ): Promise<any> {
-    let response = await this.iMasterService.machinery_add_update(Dto);
+    const response = await this.iMasterService.machinery_add_update(Dto);
     return this.iMasterService.customResponse(
       response,
       'New machinery creation!',
@@ -109,75 +120,161 @@ export class MasterController {
     );
   }
 
-  @ApiBody({ type: machineryTableDto})
+  @ApiBody({ type: machineryTableDto })
   @UsePipes(new ValidationPipe())
   @Post('machinery_list_table')
- public async machinery_list_table(dto:machineryTableDto):Promise<any>
- {
-  try {
-    let response = await this.iMasterService.machinery_list_table(dto);
+  public async machinery_list_table(dto: machineryTableDto): Promise<any> {
+    try {
+      const response = await this.iMasterService.machinery_list_table(dto);
+      return this.iMasterService.customResponse(
+        response,
+        'Department List!',
+        HttpStatus.OK.toString(),
+      );
+    } catch (e) {
+      console.log(e);
+    }
+  }
+
+  @ApiBody({ type: newMailAlertDto })
+  @UsePipes(new ValidationPipe())
+  @Post('mail_alert')
+  public async mail_alert(@Body() Dto: newMailAlertDto): Promise<any> {
+    const response = await this.iMasterService.email_alert(Dto);
     return this.iMasterService.customResponse(
       response,
-      'Department List!',
+      'Email alert creation!',
       HttpStatus.OK.toString(),
     );
-  } catch (e) {
-    console.log(e);
   }
- }
 
- @ApiBody({ type: newMailAlertDto })
- @UsePipes(new ValidationPipe())
- @Post('mail_alert')
- public async mail_alert(
-   @Body() Dto: newMailAlertDto,
- ): Promise<any> {
-   let response = await this.iMasterService.email_alert(Dto);
-   return this.iMasterService.customResponse(
-     response,
-     'Email alert creation!',
-     HttpStatus.OK.toString(),
-   );
- }
+  @ApiBody({ type: emailAlertTableDto })
+  @UsePipes(new ValidationPipe())
+  @Post('email_alert_list_table')
+  public async email_alert_list_table(dto: emailAlertTableDto): Promise<any> {
+    try {
+      const response = await this.iMasterService.email_alert_list_table(dto);
+      return this.iMasterService.customResponse(
+        response,
+        'Email Alert List!',
+        HttpStatus.OK.toString(),
+      );
+    } catch (e) {
+      console.log(e);
+    }
+  }
+  @UsePipes(new ValidationPipe())
+  @Get('email_alert_receipient_list/:alert_id')
+  public async email_alert_receipient_list(
+    @Param('alert_id') alert_id: number,
+  ): Promise<any> {
+    const response =
+      await this.iMasterService.email_alert_receipient_list(alert_id);
+    return this.iMasterService.customResponse(
+      response,
+      'Email List!',
+      HttpStatus.OK.toString(),
+    );
+  }
 
- @ApiBody({ type: emailAlertTableDto})
- @UsePipes(new ValidationPipe())
- @Post('email_alert_list_table')
-public async email_alert_list_table(dto:emailAlertTableDto):Promise<any>
-{
- try {
-   let response = await this.iMasterService.email_alert_list_table(dto);
-   return this.iMasterService.customResponse(
-     response,
-     'Email Alert List!',
-     HttpStatus.OK.toString(),
-   );
- } catch (e) {
-   console.log(e);
- }
-}
-@UsePipes(new ValidationPipe())
-@Get('email_alert_receipient_list/:alert_id')
-public async email_alert_receipient_list( @Param('alert_id') alert_id: number,): Promise<any>
-{
-  let response = await this.iMasterService.email_alert_receipient_list(alert_id);
-  return this.iMasterService.customResponse(
-    response,
-    'Email List!',
-    HttpStatus.OK.toString(),
-  );
-}
+  @UsePipes(new ValidationPipe())
+  @Get('employee_email_list/:subsidiary_id')
+  public async employee_email_list(
+    @Param('subsidiary_id') subsidiary_id: number,
+  ): Promise<any> {
+    const response =
+      await this.iMasterService.employee_email_list(subsidiary_id);
+    return this.iMasterService.customResponse(
+      response,
+      'Email List!',
+      HttpStatus.OK.toString(),
+    );
+  }
 
-@UsePipes(new ValidationPipe())
-@Get('employee_email_list/:subsidiary_id')
-public async employee_email_list( @Param('subsidiary_id') subsidiary_id: number,): Promise<any>
-{
-  let response = await this.iMasterService.employee_email_list(subsidiary_id);
-  return this.iMasterService.customResponse(
-    response,
-    'Email List!',
-    HttpStatus.OK.toString(),
-  );
-}
+  @UsePipes(new ValidationPipe())
+  @Get('drp_taxnomy_list/:subsidiary_id/:type')
+  public async drp_taxnomy_list(
+    @Param('subsidiary_id') subsidiary_id: number,
+    @Param('type') type: string,
+  ): Promise<any> {
+    const response = await this.iMasterService.drp_taxnomy_list(
+      subsidiary_id,
+      type,
+    );
+    return this.iMasterService.customResponse(
+      response,
+      'dropdown List!',
+      HttpStatus.OK.toString(),
+    );
+  }
 
+  @ApiBody({ type: newMenuDto })
+  @UsePipes(new ValidationPipe())
+  @Post('menu_add_update')
+  public async menu_add_update(@Body() Dto: newMenuDto): Promise<any> {
+    const response = await this.iMasterService.menu_add_update(Dto);
+    return this.iMasterService.customResponse(
+      response,
+      'Menu creation!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @ApiBody({ type: TableDto })
+  @UsePipes(new ValidationPipe())
+  @Post('menu_fetch_all')
+  public async menu_table(@Body() tableDto: TableDto): Promise<any> {
+    const response = await this.iMasterService.menu_table(tableDto);
+    return this.iMasterService.customResponse(
+      response,
+      'Menu List!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @UsePipes(new ValidationPipe())
+  @Get('menu_mapped_group_list/:menu_id')
+  public async menu_mapped_group_list(
+    @Param('menu_id') menu_id: number,
+  ): Promise<any> {
+    const response = await this.iMasterService.menu_mapped_group_list(menu_id);
+    return this.iMasterService.customResponse(
+      response,
+      'menu group List!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @ApiBody({ type: newRolePermissionDto })
+  @UsePipes(new ValidationPipe())
+  @Post('role_menu_permission')
+  public async role_menu_permission(
+    @Body() Dto: newRolePermissionDto,
+  ): Promise<any> {
+    const response = await this.iMasterService.role_menu_permission(Dto);
+    return this.iMasterService.customResponse(
+      response,
+      'Permission creation!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @UsePipes(new ValidationPipe())
+  @Get('menu_role_permission/:role_id/:group_id/:subsidiary_id')
+  public async menu_role_permission(
+    @Param('role_id') role_id: number,
+    @Param('group_id') group_id: number,
+    @Param('subsidiary_id') subsidiary_id: number,
+  ): Promise<any> {
+    const response = await this.iMasterService.menu_role_permission({
+      role_id,
+      group_id,
+      subsidiary_id,
+    });
+    return this.iMasterService.customResponse(
+      response,
+      'Role Permission List!',
+      HttpStatus.OK.toString(),
+    );
+  }
 }

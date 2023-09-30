@@ -23,7 +23,12 @@ import {
   BRI_AuthUserRoleMapHistory,
   BRI_AuthSession,
 } from './entities/user.entity';
-import { UserCreationDto, LoginUserDto,UserResetRequestDto, UserListRequestDto } from './dto/auth.dto';
+import {
+  UserCreationDto,
+  LoginUserDto,
+  UserResetRequestDto,
+  UserListRequestDto,
+} from './dto/auth.dto';
 import { decryptAESString } from '../shared/services/encrypt.decrypt.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { from, zip } from 'rxjs';
@@ -63,15 +68,15 @@ export class AuthService implements IAuthService {
   }
   async authenticate(dto: LoginUserDto): Promise<any> {
     try {
-      console.log(dto,' request');
+      console.log(dto, ' request');
       // console.log(decryptAESString(dto.userName),'userName');
       // console.log(decryptAESString(dto.password),'password');
-      let userData = await this.userRepository.find({
-        where: { UserName: (dto.userName) },
+      const userData = await this.userRepository.find({
+        where: { UserName: dto.userName },
       });
       if (userData.length > 0) {
         try {
-          var pwd = bcrypt.compareSync((dto.password), userData[0].Password);
+          var pwd = bcrypt.compareSync(dto.password, userData[0].Password);
         } catch (e) {
           throw new HttpException(
             { message: 'Password not  matched.' },
@@ -79,23 +84,42 @@ export class AuthService implements IAuthService {
           );
         }
         if (pwd) {
-          userData[0].Password = '';
-          const token = await this.generateJWT(userData);
-          let sessionTbl = new BRI_AuthSession();
-          sessionTbl.DeviceType = dto.device;
-          sessionTbl.IME = dto.imei;
-          sessionTbl.IPAddress = dto.ipv4;
-          sessionTbl.IsLogedOut = 0;
-          sessionTbl.LoginedOn = new Date();
-          sessionTbl.Ploatform = dto.plat_form;
-          sessionTbl.UserId = userData[0].UserId;
-          let session = await this.authSessionRepository.save(sessionTbl);
-          return {
-            message: 'Login successfully',
-            user: userData[0],
-            token: token,
-            session_id: session.SessionId,
-          };
+          const userRoleMap = await this.userRoleMapRepository.find({
+            select: { RoleId: true },
+            where: { UserId: userData[0].UserId, IsActive: 1 },
+          });
+          if (userRoleMap.length > 0) {
+            const param =
+              'exec BRI_USP_Auth_Permission_List ' +
+              userRoleMap[0].RoleId +
+              ',' +
+              userData[0].SubsidiaryId;
+            const rolePermissionList = await this.userRepository.query(param);
+
+            userData[0].Password = '';
+            const token = await this.generateJWT(userData);
+            const sessionTbl = new BRI_AuthSession();
+            sessionTbl.DeviceType = dto.device;
+            sessionTbl.IME = dto.imei;
+            sessionTbl.IPAddress = dto.ipv4;
+            sessionTbl.IsLogedOut = 0;
+            sessionTbl.LoginedOn = new Date();
+            sessionTbl.Ploatform = dto.plat_form;
+            sessionTbl.UserId = userData[0].UserId;
+            const session = await this.authSessionRepository.save(sessionTbl);
+            return {
+              message: 'Login successfully',
+              user: userData[0],
+              permission: rolePermissionList,
+              token: token,
+              session_id: session.SessionId,
+            };
+          } else {
+            throw new HttpException(
+              { message: 'Role Not Assigned.' },
+              HttpStatus.UNAUTHORIZED,
+            );
+          }
         } else {
           throw new HttpException(
             { message: 'Password not  matched.' },
@@ -109,27 +133,28 @@ export class AuthService implements IAuthService {
         );
       }
     } catch (e) {
-      console.log(e,' error:');
+      console.log(e, ' error:');
       throw new HttpException(
         { message: 'Internal server error.' },
         HttpStatus.UNAUTHORIZED,
       );
     }
   }
-  async logout(session_id:any):Promise<any>{
-    try{
-
-      let dbSession=await this.authSessionRepository.find({where:{SessionId:session_id,IsLogedOut:0}});
-      if(dbSession.length>0)
-      {
-        await this.authSessionRepository.update(session_id,{IsLogedOut:1,LoggedOut:new Date()});
-        return "Successfully loged out."
-      }else{
-        return "Its already loged out."
+  async logout(session_id: any): Promise<any> {
+    try {
+      const dbSession = await this.authSessionRepository.find({
+        where: { SessionId: session_id, IsLogedOut: 0 },
+      });
+      if (dbSession.length > 0) {
+        await this.authSessionRepository.update(session_id, {
+          IsLogedOut: 1,
+          LoggedOut: new Date(),
+        });
+        return 'Successfully loged out.';
+      } else {
+        return 'Its already loged out.';
       }
-
-    }catch(e)
-    {
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal server error.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -138,21 +163,19 @@ export class AuthService implements IAuthService {
   }
   async user_creation(dto: UserCreationDto): Promise<any> {
     try {
-      let count = await this.userRepository.findAndCount({
+      const count = await this.userRepository.findAndCount({
         where: { UserName: dto.username },
       });
 
       if (count[1] == 0 && dto.user_id == 0) {
-        let dt = new Date();
-        let dbTbl = new BRI_AuthUsers();
+        const dt = new Date();
+        const dbTbl = new BRI_AuthUsers();
         // dbTbl.UserId=0;
-       // dbTbl.DOB = dto.dob===""?null:dto.dob;
-       if(dto.department_id>0)
-        dbTbl.DepartmentId = dto.department_id;
+        // dbTbl.DOB = dto.dob===""?null:dto.dob;
+        if (dto.department_id > 0) dbTbl.DepartmentId = dto.department_id;
         dbTbl.Email = dto.email;
         dbTbl.EmployeeCode = dto.employee_code;
-        if(dto.employee_id>0)
-        dbTbl.EmployeeId == dto.employee_id;
+        if (dto.employee_id > 0) dbTbl.EmployeeId == dto.employee_id;
         dbTbl.FirstName = dto.first_name;
         dbTbl.LastName = dto.last_name;
         dbTbl.IsActive = dto.is_active;
@@ -161,17 +184,16 @@ export class AuthService implements IAuthService {
         dbTbl.Password = bcrypt.hashSync(dto.password, 10);
         dbTbl.PasswordHash = '';
         dbTbl.ProfileImageID = 0;
-        if(dto.subsidiary_id>0)
-        dbTbl.SubsidiaryId = dto.subsidiary_id;
+        if (dto.subsidiary_id > 0) dbTbl.SubsidiaryId = dto.subsidiary_id;
         dbTbl.UserName = dto.username;
         dbTbl.created_by = dto.created_by;
         dbTbl.created_on = dt;
-        let savedUser = await this.userRepository.save(dbTbl);
+        const savedUser = await this.userRepository.save(dbTbl);
 
-        let dbHis = new BRI_AuthUsersHistory();
+        const dbHis = new BRI_AuthUsersHistory();
         dbHis.UserId = savedUser.UserId;
-       // if(dto.dob!=null)
-      //  dbHis.DOB = dto.dob;
+        // if(dto.dob!=null)
+        //  dbHis.DOB = dto.dob;
         dbHis.DepartmentId = dto.department_id;
         dbHis.Email = dto.email;
         dbHis.EmployeeCode = dto.employee_code;
@@ -190,16 +212,16 @@ export class AuthService implements IAuthService {
         dbHis.created_on = dt;
         await this.userHistRepository.save(dbHis);
 
-        let rolTbl = new BRI_AuthUserRoleMap();
+        const rolTbl = new BRI_AuthUserRoleMap();
         rolTbl.IsActive = 1;
-       // rolTbl.MapId = 0;
+        // rolTbl.MapId = 0;
         rolTbl.RoleId = dto.role_id;
         rolTbl.UserId = savedUser.UserId;
         rolTbl.created_by = dto.created_by;
         rolTbl.created_on = dt;
-        let saveRole = await this.userRoleMapRepository.save(rolTbl);
+        const saveRole = await this.userRoleMapRepository.save(rolTbl);
 
-        let rolHistTbl = new BRI_AuthUserRoleMapHistory();
+        const rolHistTbl = new BRI_AuthUserRoleMapHistory();
         rolHistTbl.IsActive = 1;
         rolHistTbl.IsLastRecord = 1;
         rolHistTbl.MapId = saveRole.MapId;
@@ -207,31 +229,31 @@ export class AuthService implements IAuthService {
         rolHistTbl.UserId = savedUser.UserId;
         rolHistTbl.created_by = dto.created_by;
         rolHistTbl.created_on = dt;
-        let saveRoleHis = await this.userRoleMapHisRepository.save(rolHistTbl);
+        const saveRoleHis =
+          await this.userRoleMapHisRepository.save(rolHistTbl);
         return 'User created successfully.';
       } else if (dto.user_id > 0) {
-
-        let dt = new Date();
+        const dt = new Date();
         this.userRepository.update(dto.user_id, {
           FirstName: dto.first_name,
           LastName: dto.last_name,
           Email: dto.email,
-        //  DOB: dto.dob,
-        
+          //  DOB: dto.dob,
+
           MobileNo: dto.mobile_no,
-         // DepartmentId: dto.department_id,
-        //  SubsidiaryId: dto.subsidiary_id,
-         // EmployeeCode: dto.employee_code,
-         // EmployeeId: dto.employee_id,
+          // DepartmentId: dto.department_id,
+          //  SubsidiaryId: dto.subsidiary_id,
+          // EmployeeCode: dto.employee_code,
+          // EmployeeId: dto.employee_id,
           IsActive: dto.is_active,
           modified_on: dt,
           modified_by: dto.created_by,
         });
         this.userHistRepository.update(dto.user_id, { IsLastRecord: 0 });
 
-        let dbHis = new BRI_AuthUsersHistory();
+        const dbHis = new BRI_AuthUsersHistory();
         dbHis.UserId = dto.user_id;
-       // dbHis.DOB = dto.dob;
+        // dbHis.DOB = dto.dob;
         dbHis.DepartmentId = dto.department_id;
         dbHis.Email = dto.email;
         dbHis.EmployeeCode = dto.employee_code;
@@ -249,31 +271,31 @@ export class AuthService implements IAuthService {
         dbHis.created_on = dt;
         await this.userHistRepository.save(dbHis);
 
-        let userRoleExist = await this.userRoleMapRepository.findAndCount({
+        const userRoleExist = await this.userRoleMapRepository.findAndCount({
           where: { UserId: dto.user_id },
         });
-        console.log(userRoleExist[0][0].MapId,'userRoleExist');
-       // if (userRoleExist[1] == 0) {
-          await this.userRoleMapRepository.update(
-            { UserId: dto.user_id },
-            { RoleId: dto.role_id },
-          );
-          await this.userRoleMapHisRepository.update(
-            { UserId: dto.user_id, IsLastRecord: 1 },
-            { IsLastRecord: 1 },
-          );
-          let rolHistTbl = new BRI_AuthUserRoleMapHistory();
-          rolHistTbl.IsActive = 1;
-          rolHistTbl.IsLastRecord = 1;
-          rolHistTbl.MapId = userRoleExist[0][0].MapId;
-          rolHistTbl.RoleId = dto.role_id;
-          rolHistTbl.UserId = dto.user_id;
-          rolHistTbl.IsLastRecord = 1;
-          rolHistTbl.created_by = dto.created_by;
-          rolHistTbl.created_on = dt;
-          let saveRoleHis =
-            await this.userRoleMapHisRepository.save(rolHistTbl);
-      //  }
+        console.log(userRoleExist[0][0].MapId, 'userRoleExist');
+        // if (userRoleExist[1] == 0) {
+        await this.userRoleMapRepository.update(
+          { UserId: dto.user_id },
+          { RoleId: dto.role_id },
+        );
+        await this.userRoleMapHisRepository.update(
+          { UserId: dto.user_id, IsLastRecord: 1 },
+          { IsLastRecord: 1 },
+        );
+        const rolHistTbl = new BRI_AuthUserRoleMapHistory();
+        rolHistTbl.IsActive = 1;
+        rolHistTbl.IsLastRecord = 1;
+        rolHistTbl.MapId = userRoleExist[0][0].MapId;
+        rolHistTbl.RoleId = dto.role_id;
+        rolHistTbl.UserId = dto.user_id;
+        rolHistTbl.IsLastRecord = 1;
+        rolHistTbl.created_by = dto.created_by;
+        rolHistTbl.created_on = dt;
+        const saveRoleHis =
+          await this.userRoleMapHisRepository.save(rolHistTbl);
+        //  }
         return 'User updated successfully.';
       } else if (dto.user_id > 0 && count[1] > 0) {
         return 'User already exist.';
@@ -287,60 +309,69 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async resetLink(email:any):Promise<any>{
-    console.log(email,'email');
-    try{
-      let user=await this.userRepository.find({where:{UserName:email}});
-      if(user.length>0)
-      {
-      // console.log(user,'user');
-        let emailBase64=Buffer.from(user[0].UserName).toString('base64');
-       
-        let key=await this.makeid(75);
-       
-        let token=emailBase64+"@"+key;
-        
-        console.log(token,' token');
+  async resetLink(email: any): Promise<any> {
+    console.log(email, 'email');
+    try {
+      const user = await this.userRepository.find({
+        where: { UserName: email },
+      });
+      if (user.length > 0) {
+        // console.log(user,'user');
+        const emailBase64 = Buffer.from(user[0].UserName).toString('base64');
+
+        const key = await this.makeid(75);
+
+        const token = emailBase64 + '@' + key;
+
+        console.log(token, ' token');
         const location = join(
           __dirname,
-          "../shared/template/mail/forgot_password.html"
+          '../shared/template/mail/forgot_password.html',
         );
-        let options = {
-          encoding: "utf-8",
+        const options = {
+          encoding: 'utf-8',
         };
-        let html =   readFileSync(location);
-        let mail_content = html;
-        let reset_link=this.configService.get('HOSTED_URL')+'/resetpassword?code='+token;
-     //   console.log(this.configService.get('HOSTED_URL'),'this.configService.get(;')
-        let mapObj = {
-          "@@Link@@": reset_link,
+        const html = readFileSync(location);
+        const mail_content = html;
+        const reset_link =
+          this.configService.get('HOSTED_URL') + '/resetpassword?code=' + token;
+        //   console.log(this.configService.get('HOSTED_URL'),'this.configService.get(;')
+        const mapObj = {
+          '@@Link@@': reset_link,
         };
-        console.log(mapObj, "mapobj");
+        console.log(mapObj, 'mapobj');
         // mail_content = mail_content.replace(
         //   /@@ID@@/gi,
         //   function (matched) {
         //     return mapObj[matched];
         //   }
         // );
-       let mail_html= mail_content.toString().replace("@@Link@@",reset_link);
-        let subject = "BRI Installation - Password Reset Link";
-        let toMaile =user[0].Email;
+        const mail_html = mail_content
+          .toString()
+          .replace('@@Link@@', reset_link);
+        const subject = 'BRI Installation - Password Reset Link';
+        const toMaile = user[0].Email;
 
-          this.sendEmail(toMaile,'rprakashkgm@gmail.com',subject,mail_html,'','');
-          let tdt=new Date();
-          tdt.setDate(tdt.getHours()+24);
-          await this.userRepository.update(user[0].UserId,
-            {ResetToken:token,
-            TokenExpairyOn:tdt,
-            modified_on:new Date()
-          });
-        return "Link sent successfully.";
-
-      }else{
-        return "Email id not exists";;
+        this.sendEmail(
+          toMaile,
+          'rprakashkgm@gmail.com',
+          subject,
+          mail_html,
+          '',
+          '',
+        );
+        const tdt = new Date();
+        tdt.setDate(tdt.getHours() + 24);
+        await this.userRepository.update(user[0].UserId, {
+          ResetToken: token,
+          TokenExpairyOn: tdt,
+          modified_on: new Date(),
+        });
+        return 'Link sent successfully.';
+      } else {
+        return 'Email id not exists';
       }
-    }catch(e)
-    {
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -348,36 +379,30 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async resetLinkValidation(token:any):Promise<any>{
-    try{
-      let emailbase64=token.split('@')[0]
-      let keybase64=token.split('@')[1];      
-      let buff = Buffer.from(emailbase64, 'base64');
-      let email = buff.toString('ascii');
-     
-      let user=await this.userRepository.find({where:{UserName:email}});
-      if(user.length>0)
-      {
-        
+  async resetLinkValidation(token: any): Promise<any> {
+    try {
+      const emailbase64 = token.split('@')[0];
+      const keybase64 = token.split('@')[1];
+      const buff = Buffer.from(emailbase64, 'base64');
+      const email = buff.toString('ascii');
 
-        if(user[0].ResetToken==token)
-        {
-        
-          if(user[0].TokenExpairyOn>new Date())
-          {
-            return "Link valid.";
-          }else{
-            return "Link expaired.";
+      const user = await this.userRepository.find({
+        where: { UserName: email },
+      });
+      if (user.length > 0) {
+        if (user[0].ResetToken == token) {
+          if (user[0].TokenExpairyOn > new Date()) {
+            return 'Link valid.';
+          } else {
+            return 'Link expaired.';
           }
-
-        }else{
-          return "Invalid link.";
+        } else {
+          return 'Invalid link.';
         }
-      }else{
-        return "Invalid link.";
+      } else {
+        return 'Invalid link.';
       }
-    }catch(e)
-    {
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -385,50 +410,46 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async resetPassword(reset:UserResetRequestDto):Promise<any>{
-    try{
-        
-      let emailbase64=reset.token.split('@')[0]
-      let keybase64=reset.token.split('@')[1];      
-      let buff = Buffer.from(emailbase64, 'base64');
-      let email = buff.toString('ascii');
-      let user=await this.userRepository.find({where:{UserName:email}});
-      if(user.length>0)
-      {
-        console.log(keybase64,'keybase64');
-        console.log(user[0].ResetToken,'user[0].reset_token');
-        if(user[0].ResetToken==reset.token)
-        {
-          
-          if(user[0].TokenExpairyOn>new Date())
-          {
-            let pwd=bcrypt.hashSync(reset.password, 10);
-            await this.userRepository.update(user[0].UserId,{Password:pwd,ResetToken:null,TokenExpairyOn:null});
-            return "Successfully reseted."
-          }else{
-            return "Link expaired.";
+  async resetPassword(reset: UserResetRequestDto): Promise<any> {
+    try {
+      const emailbase64 = reset.token.split('@')[0];
+      const keybase64 = reset.token.split('@')[1];
+      const buff = Buffer.from(emailbase64, 'base64');
+      const email = buff.toString('ascii');
+      const user = await this.userRepository.find({
+        where: { UserName: email },
+      });
+      if (user.length > 0) {
+        console.log(keybase64, 'keybase64');
+        console.log(user[0].ResetToken, 'user[0].reset_token');
+        if (user[0].ResetToken == reset.token) {
+          if (user[0].TokenExpairyOn > new Date()) {
+            const pwd = bcrypt.hashSync(reset.password, 10);
+            await this.userRepository.update(user[0].UserId, {
+              Password: pwd,
+              ResetToken: null,
+              TokenExpairyOn: null,
+            });
+            return 'Successfully reseted.';
+          } else {
+            return 'Link expaired.';
           }
-
-        }else{
-          return "Invalid link.";
+        } else {
+          return 'Invalid link.';
         }
-      }else{
-        return "Invalid link.";
+      } else {
+        return 'Invalid link.';
       }
-    }catch(e)
-    {
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
   }
   // user_list_table(dto:UserListRequestDto):Promise<any>;
-  async user_list_table():Promise<any>{
-    try{
-
-
+  async user_list_table(): Promise<any> {
+    try {
       // const users = await this.userRepository.createQueryBuilder("user");
       // users.innerJoin(BRI_AuthUserRoleMap,"ur","ur.userid==u.userid AND ur.isActive=1");
       // users.innerJoin(BRI_MasterRole,"mr","mr.roleid==ur.roleid AND mr.isActive=1");
@@ -448,41 +469,36 @@ export class AuthService implements IAuthService {
       //   let data=await users.getMany();
       // }
 
+      // let q=this.userRepository.createQueryBuilder("u");
+      // q.innerJoin(BRI_AuthUserRoleMap,"ur","ur.userid==u.userid AND ur.isActive=1");
+      // q.innerJoin(BRI_MasterRole,"mr","mr.roleid==ur.roleid AND mr.isActive=1");
+      // q.where('u.isactive=1');
+      // q.select("u.UserId","user_id");
+      // q.addSelect("u.UserName","user_name");
+      // q.addSelect("u.Email","email");
+      // q.addSelect("u.MobileNo","mobile_no");
+      // q.addSelect("u.DepartmentId","department_id");
+      // q.addSelect("u.SubsidiaryId","subsidiary_id");
+      // q.addSelect("u.FirstName","first_name");
+      // q.addSelect("u.LastName","last_name");
+      // q.addSelect("u.EmployeeCode","employee_code");
+      // q.addSelect("u.EmployeeId","employee_id");
+      // q.addSelect("u.DOB","doob");
+      // q.addSelect("u.IsActive","isactive");
+      // q.addSelect("FORMAT(u.CreatedOn,'dd-MM-yyyy')","created_on");
+      // q.addSelect("u.CreatedBy","created_by");
+      // q.addSelect("mr.RoleName","role_name");
+      // q.addSelect("mr.RoleCode","role_code");
+      // q.addSelect("mr.RoleId","role_id");
+      // if(dto.subsidiary_id>0)
+      // q.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
 
-        // let q=this.userRepository.createQueryBuilder("u");
-        // q.innerJoin(BRI_AuthUserRoleMap,"ur","ur.userid==u.userid AND ur.isActive=1");
-        // q.innerJoin(BRI_MasterRole,"mr","mr.roleid==ur.roleid AND mr.isActive=1");
-        // q.where('u.isactive=1');
-        // q.select("u.UserId","user_id");
-        // q.addSelect("u.UserName","user_name");
-        // q.addSelect("u.Email","email");
-        // q.addSelect("u.MobileNo","mobile_no");
-        // q.addSelect("u.DepartmentId","department_id");
-        // q.addSelect("u.SubsidiaryId","subsidiary_id");
-        // q.addSelect("u.FirstName","first_name");
-        // q.addSelect("u.LastName","last_name");
-        // q.addSelect("u.EmployeeCode","employee_code");
-        // q.addSelect("u.EmployeeId","employee_id");
-        // q.addSelect("u.DOB","doob");
-        // q.addSelect("u.IsActive","isactive");
-        // q.addSelect("FORMAT(u.CreatedOn,'dd-MM-yyyy')","created_on");
-        // q.addSelect("u.CreatedBy","created_by");
-        // q.addSelect("mr.RoleName","role_name");
-        // q.addSelect("mr.RoleCode","role_code");
-        // q.addSelect("mr.RoleId","role_id");
-        // if(dto.subsidiary_id>0)
-        // q.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
-      
+      const param = 'exec BRI_USP_UserTable ';
 
-        let param =
-        'exec BRI_USP_UserTable ' ;
+      const data = this.userRepository.query(param);
 
-        let data = this.userRepository.query(param);
-
-        return data;
-
-    }catch(e)
-    {
+      return data;
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -490,19 +506,16 @@ export class AuthService implements IAuthService {
     }
   }
 
-
   async makeid(length) {
-    var result = '';
-    var characters =
+    let result = '';
+    const characters =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    var charactersLength = characters.length;
-    for (var i = 0; i < length; i++) {
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
       result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
     return result;
   }
-
-
 
   async customResponse(
     data: object,
