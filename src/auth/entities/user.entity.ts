@@ -26,6 +26,9 @@ export class BRI_AuthUsers {
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
 
+  @Column({ name: 'LocationId' })
+  LocationId: number;
+  
   @Column({ name: 'FirstName' })
   FirstName: string;
 
@@ -127,7 +130,8 @@ export class BRI_AuthUsersHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
-
+  @Column({ name: 'LocationId' })
+  LocationId: number;
 }
 
 @Entity({ name: 'BRI_AuthSession' })
@@ -390,6 +394,45 @@ export class BRI_AuthModuleRoleMapHistory {
 
 }
 
+@Entity({ name: 'BRI_OperationTaxnomy' })
+export class BRI_OperationTaxnomy {
+  @PrimaryGeneratedColumn({ name: 'TaxnomyId' })
+  TaxnomyId: number;
 
+  @Column({ name: 'TaxnomyCode' })
+  TaxnomyCode: string;
+
+  @Column({ name: 'TaxnomyName' })
+  TaxnomyName: string;
+
+  @Column({ name: 'TaxnomyValue' })
+  TaxnomyValue: number;
+
+  @Column({ name: 'TaxnomyType' })
+  TaxnomyType: string;
+
+  @Column({ name: 'OrderId' })
+  OrderId: number;
+
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+  
+
+  @Column({ name: 'ParentId' })
+  ParentId: number;
+  @Column({ name: 'NetsuiteId' })
+  NetsuiteId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'ModifiedOn' })
+  modified_on: Date;
+  @Column({ name: 'ModifiedBy' })
+  modified_by: number;
+}
 
 

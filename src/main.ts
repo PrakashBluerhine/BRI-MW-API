@@ -9,6 +9,7 @@ require('dotenv').config();
 require('dotenv').config({
   path: `./environment/.env.${process.env.NODE_ENV}`,
 });
+import { DateTime } from 'luxon';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.setGlobalPrefix('api');
@@ -39,7 +40,11 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
 
   await app.listen(process.env.GATEWAY_SERVICE_PORT);
-
+  const localDateTime = DateTime.local().setZone('asia/dubai');
+  console.log(localDateTime.toJSDate(), ' desiredTimezone');
+  console.log(localDateTime, ' desiredTimezone');
+  console.log(localDateTime.toJSDate(), ' desiredTimezone');
+  console.log(DateTime.local().zoneName, ' desiredTimezone');
   Logger.log(
     `Gateway service is running on ` +
     process.env.GATEWAY_SERVICE_PORT,

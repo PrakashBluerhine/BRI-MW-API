@@ -1,39 +1,38 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SharedModule } from '../shared/shared.module';
-import { MasterController } from '../master/master.controller';
-import { MasterService } from '../master/master.service';
-import { MASTER_SERVICE } from './interface/master.interface';
+import { TransactionController } from '../transaction/transaction.controller';
+import { TransactionService } from '../transaction/transaction.service';
+import { TRANSACTION_SERVICE } from './interface/transaction.interface';
 import { CustomConfigService } from '../shared/services/custom-config.service';
 import {
-  BRI_MasterRole,
   BRI_OperationTaxnomy,
-  BRI_MasterRoleHistory,
   BRI_MasterDepartment,
   BRI_MasterEmployee,
-  BRI_MasterEmployeeHistory,
   BRI_MasterMachine,
-  BRI_MasterMachineHistory,
   BRI_MasterEmailAlert,
-  BRI_MasterEmailAlertHistory,
   BRI_EmailAlertRecipient,
-  BRI_EmailAlertRecipientHistory,
-  BRI_OperationTaxnomyHistory,
-  BRI_MasterMenu,
-  BRI_MasterMenuHistory,
-  BRI_MasterGroupMenu,
-  BRI_MasterGroupMenuHistory,
-  BRI_AuthRolePermission,
-  BRI_AuthRolePermissionHistory,
   BRI_WorkOrderMaster,
   BRI_WorkOrderMasterHistory,
   BRI_WorkOrderSteps,
   BRI_WorkOrderStepsHistory,
-  BRI_AuthUsers,
-  BRI_AuthUsersHistory
-} from './entities/master.entity';
+  BRI_WorkOrderItems,
+  BRI_MasterItemHistory,
+  BRI_ItemRequissition,
+  BRI_ItemRequissitionHistory,
+  BRI_ItemRequisitionDetails,
+  BRI_ItemRequisitionDetailsHistory,
+  BRI_TimeSheet,
+  BRI_LabourTimeSheet,
+  BRI_TimesheetIntravelTracking,
+  BRI_ItemTimeSheet,
+  BRI_MasterIntraval,
+  BRI_MasterItem,
+  BRI_ScrapItemTimesheet,
+  BRI_MachineTimesheet
+} from './entities/transaction.entity';
 
 import { CommonService } from '../shared/services/common.service';
 import { JwtCustomService } from '../shared/services/jwt-custom.service';
@@ -49,37 +48,36 @@ import { Repository } from 'typeorm';
       },
     }),
     TypeOrmModule.forFeature([
-      BRI_MasterRole,
       BRI_OperationTaxnomy,
-      BRI_MasterRoleHistory,
       BRI_MasterDepartment,
       BRI_MasterEmployee,
-      BRI_MasterEmployeeHistory,
       BRI_MasterMachine,
-      BRI_MasterMachineHistory,
       BRI_MasterEmailAlert,
-      BRI_MasterEmailAlertHistory,
       BRI_EmailAlertRecipient,
-      BRI_EmailAlertRecipientHistory,
-      BRI_OperationTaxnomyHistory,
-      BRI_MasterMenu,
-      BRI_MasterMenuHistory,
-      BRI_MasterGroupMenu,
-      BRI_MasterGroupMenuHistory,
-      BRI_AuthRolePermission,
-      BRI_AuthRolePermissionHistory,
       BRI_WorkOrderMaster,
       BRI_WorkOrderMasterHistory,
       BRI_WorkOrderSteps,
       BRI_WorkOrderStepsHistory,
-      BRI_AuthUsers,
-      BRI_AuthUsersHistory
+      BRI_WorkOrderItems,
+      BRI_MasterItemHistory,
+      BRI_ItemRequissition,
+      BRI_ItemRequissitionHistory,
+      BRI_ItemRequisitionDetails,
+      BRI_ItemRequisitionDetailsHistory,
+      BRI_TimeSheet,
+      BRI_LabourTimeSheet,
+      BRI_TimesheetIntravelTracking,
+      BRI_ItemTimeSheet,
+      BRI_MasterIntraval,
+      BRI_MasterItem,
+      BRI_ScrapItemTimesheet,
+      BRI_MachineTimesheet
     ]),
     SharedModule,
   ],
   providers: [
-    { useClass: MasterService, provide: MASTER_SERVICE },
-    MasterService,
+    { useClass: TransactionService, provide: TRANSACTION_SERVICE },
+    TransactionService,
     ConfigService,
     CustomConfigService,
     CommonService,
@@ -87,7 +85,7 @@ import { Repository } from 'typeorm';
     JwtService,
     Repository,
   ],
-  controllers: [MasterController],
+  controllers: [TransactionController],
   exports: [],
 })
-export class MasterModule {}
+export class TransactionModule {}

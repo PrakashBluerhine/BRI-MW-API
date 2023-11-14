@@ -62,7 +62,7 @@ export class newEmployeeDto {
   @ApiProperty()
   subsidiary_id: number;
   @ApiProperty()
-  isActive: number;
+  IsActive: number;
   @ApiProperty()
   userId: number;
 }
@@ -269,5 +269,37 @@ class permission {
   view_record: number;
   @ApiProperty()
   isActive: number;
+}
 
+export class allWorkorderTableDto {
+  @ApiProperty()
+  location: string;
+  @ApiProperty()
+  ReleaseDate: string;
+  @ApiProperty()
+  subsidiary_id: number;
+  @ApiProperty()
+  start: number;
+  @ApiProperty()
+  page_size: number;
+  @ApiProperty()
+  order_by: string;
+  @ApiProperty()
+  sort: string;
+  @ApiProperty()
+  search: string;
+}
+
+export class bulkActivInActiveDto {
+  @ApiProperty()
+  @IsNotEmpty()
+  master: string;
+  @ApiProperty()
+  @IsNotEmpty()
+  userId: number;
+  @ApiProperty({
+    isArray: true,
+  })
+  @IsNotEmpty()
+  masterId: [];
 }

@@ -22,6 +22,7 @@ import {
   BRI_AuthUserRoleMap,
   BRI_AuthUserRoleMapHistory,
   BRI_AuthSession,
+  BRI_OperationTaxnomy,
 } from './entities/user.entity';
 import {
   UserCreationDto,
@@ -60,6 +61,8 @@ export class AuthService implements IAuthService {
     private readonly userRoleMapHisRepository: Repository<BRI_AuthUserRoleMapHistory>,
     @InjectRepository(BRI_AuthSession)
     private readonly authSessionRepository: Repository<BRI_AuthSession>,
+    @InjectRepository(BRI_OperationTaxnomy)
+    private readonly operationTaxnomyRepository: Repository<BRI_OperationTaxnomy>,
 
     private readonly mailerService: MailerService,
   ) {
@@ -163,15 +166,20 @@ export class AuthService implements IAuthService {
   }
   async user_creation(dto: UserCreationDto): Promise<any> {
     try {
-      const count = await this.userRepository.findAndCount({
+      const [list1, count] = await this.userRepository.findAndCount({
         where: { UserName: dto.username },
       });
+      const sub = await this.operationTaxnomyRepository.findOne({
+        where: { TaxnomyId: dto.subsidiary_id },
+      });
+      if (count == 0 && dto.user_id == 0) {
+      
 
-      if (count[1] == 0 && dto.user_id == 0) {
         const dt = new Date();
         const dbTbl = new BRI_AuthUsers();
         // dbTbl.UserId=0;
         // dbTbl.DOB = dto.dob===""?null:dto.dob;
+
         if (dto.department_id > 0) dbTbl.DepartmentId = dto.department_id;
         dbTbl.Email = dto.email;
         dbTbl.EmployeeCode = dto.employee_code;
@@ -184,10 +192,18 @@ export class AuthService implements IAuthService {
         dbTbl.Password = bcrypt.hashSync(dto.password, 10);
         dbTbl.PasswordHash = '';
         dbTbl.ProfileImageID = 0;
-        if (dto.subsidiary_id > 0) dbTbl.SubsidiaryId = dto.subsidiary_id;
+        try {
+          if (dto.subsidiary_id > 0) {
+            dbTbl.SubsidiaryId = sub.SubsidiaryId;
+            dbTbl.LocationId = dto.subsidiary_id;
+          }
+        } catch (e) {
+          console.log(e);
+        }
         dbTbl.UserName = dto.username;
         dbTbl.created_by = dto.created_by;
         dbTbl.created_on = dt;
+
         const savedUser = await this.userRepository.save(dbTbl);
 
         const dbHis = new BRI_AuthUsersHistory();
@@ -239,10 +255,15 @@ export class AuthService implements IAuthService {
           LastName: dto.last_name,
           Email: dto.email,
           //  DOB: dto.dob,
-
+        
+          Password:
+            dto.password != null && dto.password != ''
+              ? bcrypt.hashSync(dto.password, 10)
+              : list1[0].Password,
           MobileNo: dto.mobile_no,
-          // DepartmentId: dto.department_id,
-          //  SubsidiaryId: dto.subsidiary_id,
+          DepartmentId: dto.department_id,
+          SubsidiaryId: sub.SubsidiaryId,
+          LocationId: dto.subsidiary_id,
           // EmployeeCode: dto.employee_code,
           // EmployeeId: dto.employee_id,
           IsActive: dto.is_active,
@@ -254,6 +275,7 @@ export class AuthService implements IAuthService {
         const dbHis = new BRI_AuthUsersHistory();
         dbHis.UserId = dto.user_id;
         // dbHis.DOB = dto.dob;
+        dbHis.Password = bcrypt.hashSync(dto.password, 10);
         dbHis.DepartmentId = dto.department_id;
         dbHis.Email = dto.email;
         dbHis.EmployeeCode = dto.employee_code;
@@ -265,7 +287,8 @@ export class AuthService implements IAuthService {
         dbHis.MobileNo = dto.mobile_no;
         dbHis.IsLastRecord = 1;
         dbHis.ProfileImageID = 0;
-        dbHis.SubsidiaryId = dto.subsidiary_id;
+        dbHis.SubsidiaryId = sub.SubsidiaryId;
+        dbHis.LocationId = dto.subsidiary_id;
         dbHis.UserName = dto.username;
         dbHis.created_by = dto.created_by;
         dbHis.created_on = dt;
@@ -297,7 +320,7 @@ export class AuthService implements IAuthService {
           await this.userRoleMapHisRepository.save(rolHistTbl);
         //  }
         return 'User updated successfully.';
-      } else if (dto.user_id > 0 && count[1] > 0) {
+      } else if (dto.user_id == 0 && count[1] > 0) {
         return 'User already exist.';
       }
     } catch (e) {

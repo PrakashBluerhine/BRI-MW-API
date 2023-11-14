@@ -1,11 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  Injectable,
-  HttpStatus,
-  HttpException,
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, HttpStatus, HttpException, Logger } from '@nestjs/common';
+import { Cron, SchedulerRegistry } from '@nestjs/schedule';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validate } from 'class-validator';
@@ -16,6 +11,8 @@ import { IMasterService } from '../master/interface/master.interface';
 import { CommonService } from '../shared/services/common.service';
 import { ResponseDto } from '../shared/dto/response.dto';
 import { JwtCustomService } from '../shared/services/jwt-custom.service';
+import { Axios } from 'axios';
+
 import {
   BRI_MasterRole,
   BRI_MasterRoleHistory,
@@ -34,7 +31,13 @@ import {
   BRI_MasterGroupMenu,
   BRI_MasterGroupMenuHistory,
   BRI_AuthRolePermission,
-  BRI_AuthRolePermissionHistory
+  BRI_AuthRolePermissionHistory,
+  BRI_WorkOrderMaster,
+  BRI_WorkOrderMasterHistory,
+  BRI_WorkOrderSteps,
+  BRI_WorkOrderStepsHistory,
+  BRI_AuthUsers,
+  BRI_AuthUsersHistory
 } from './entities/master.entity';
 import { ILike } from 'typeorm';
 import {
@@ -48,6 +51,8 @@ import {
   emailAlertTableDto,
   newMenuDto,
   newRolePermissionDto,
+  allWorkorderTableDto,
+  bulkActivInActiveDto,
 } from './dto/master.dto';
 
 import { MailerService } from '@nestjs-modules/mailer';
@@ -55,7 +60,8 @@ import { from, zip } from 'rxjs';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import path, { join } from 'path';
 import fs, { readFileSync } from 'fs';
-import { ApiGatewayTimeoutResponse } from '@nestjs/swagger';
+
+import axios from 'axios';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('dotenv').config({
@@ -70,6 +76,8 @@ export class MasterService implements IMasterService {
     private configService: ConfigService,
     private readonly commonService: CommonService,
     private readonly jwtCustomService: JwtCustomService,
+    private schedulerRegistry: SchedulerRegistry,
+
     @InjectRepository(BRI_MasterRole)
     private readonly roleRepository: Repository<BRI_MasterRole>,
     @InjectRepository(BRI_MasterRoleHistory)
@@ -106,11 +114,25 @@ export class MasterService implements IMasterService {
     private readonly authRoleRepository: Repository<BRI_AuthRolePermission>,
     @InjectRepository(BRI_AuthRolePermissionHistory)
     private readonly authRoleHistoryRepository: Repository<BRI_AuthRolePermissionHistory>,
+    @InjectRepository(BRI_WorkOrderMaster)
+    private readonly workorderMasterRepository: Repository<BRI_WorkOrderMaster>,
+    @InjectRepository(BRI_WorkOrderMasterHistory)
+    private readonly workorderMasterHistoryRepository: Repository<BRI_WorkOrderMasterHistory>,
+    @InjectRepository(BRI_WorkOrderSteps)
+    private readonly workorderStepsRepository: Repository<BRI_WorkOrderSteps>,
+    @InjectRepository(BRI_WorkOrderStepsHistory)
+    private readonly workorderStepsHistoryRepository: Repository<BRI_WorkOrderStepsHistory>,
+
+    @InjectRepository(BRI_AuthUsers)
+    private readonly userMasterRepository: Repository<BRI_AuthUsers>,
+    @InjectRepository(BRI_AuthUsersHistory)
+    private readonly userHistRepository: Repository<BRI_AuthUsersHistory>,
     private readonly mailerService: MailerService,
   ) {
     this.secret = 'JWT_SECRET';
     this.expiresIn = '30m';
   }
+  private readonly logger = new Logger(MasterService.name);
   async create_role(roleCreationDto: RoleCreationDto): Promise<any> {
     try {
       const count = await this.roleRepository.findAndCount({
@@ -136,7 +158,7 @@ export class MasterService implements IMasterService {
         roleHistory.created_by = storedTbl.created_by;
         const savedHistoryTbl =
           await this.roleHistoryRepository.save(roleHistory);
-        return 'Saved successfully.';
+        return { msg: 'Saved successfully.', roleId: storedTbl.RoleId };
       } else if (roleCreationDto.roleId > 0) {
         const dt = new Date();
         await this.roleHistoryRepository.update(roleCreationDto.roleId, {
@@ -163,7 +185,7 @@ export class MasterService implements IMasterService {
         roleHistory.IsLastRecord = 1;
         const savedHistoryTbl =
           await this.roleHistoryRepository.save(roleHistory);
-        return 'Updated successfully.';
+        return { msg: 'Updated successfully', roleId: roleCreationDto.roleId };
       }
     } catch (e) {
       throw new HttpException(
@@ -206,7 +228,7 @@ export class MasterService implements IMasterService {
         empTbl.EmailId = dto.email_id;
         empTbl.EmployeeCode = dto.employee_code;
         empTbl.EmployeeName = dto.employee_name;
-        empTbl.IsActive = dto.isActive;
+        empTbl.IsActive = dto.IsActive;
         empTbl.created_by = dto.userId;
         empTbl.created_on = new Date();
         empTbl.SubsidiaryId = dto.subsidiary_id;
@@ -218,7 +240,7 @@ export class MasterService implements IMasterService {
           empTbl.EmailId = dto.email_id;
           empHistTbl.EmployeeCode = dto.employee_code;
           empHistTbl.EmployeeName = dto.employee_name;
-          empHistTbl.IsActive = dto.isActive;
+          empHistTbl.IsActive = dto.IsActive;
           empHistTbl.isLastRecord = 1;
           empHistTbl.SubsidiaryId = dto.subsidiary_id;
           empHistTbl.created_by = dto.userId;
@@ -241,7 +263,7 @@ export class MasterService implements IMasterService {
             DepartmentId: dto.department_id,
             modified_by: dto.userId,
             modified_on: new Date(),
-            IsActive: dto.isActive,
+            IsActive: dto.IsActive 
           },
         );
 
@@ -251,7 +273,7 @@ export class MasterService implements IMasterService {
         empHistTbl.EmployeeCode = dto.employee_code;
         empHistTbl.EmployeeName = dto.employee_name;
         empHistTbl.EmailId = dto.email_id;
-        empHistTbl.IsActive = dto.isActive;
+        empHistTbl.IsActive = dto.IsActive;
         empHistTbl.SubsidiaryId = dto.subsidiary_id;
         empHistTbl.created_by = dto.userId;
         empHistTbl.created_on = new Date();
@@ -269,11 +291,11 @@ export class MasterService implements IMasterService {
     }
   }
 
-  async department_list(subsidiary_id): Promise<any> {
+  async department_list(subsidiary_id: number): Promise<any> {
     try {
       return await this.departmentRepository.find({
         select: { DepartmentId: true, DepartmentName: true },
-        where: { IsActive: 1 },
+        where: { IsActive: true, LocationId: subsidiary_id },
       });
     } catch (e) {
       console.log(e, ' error');
@@ -335,6 +357,7 @@ export class MasterService implements IMasterService {
           MachineCode: dto.machine_code,
           MachineName: dto.machine_name,
           DepartmentId: dto.department_id,
+          SubsidiaryId: dto.subsidiary_id,
           NsMachineId: dto.nsmachine_id,
           IsActive: dto.isActive,
         });
@@ -572,7 +595,7 @@ export class MasterService implements IMasterService {
     }
   }
 
-  async employee_email_list(subsidiary_id): Promise<any> {
+  async employee_email_list(subsidiary_id: number): Promise<any> {
     try {
       return await this.employeeRepository.find({
         select: { EmployeeId: true, EmailId: true },
@@ -589,10 +612,18 @@ export class MasterService implements IMasterService {
 
   async drp_taxnomy_list(subsidiary_id: any, type: any): Promise<any> {
     try {
+      if(subsidiary_id<0)
+      {
       return await this.drpTaxnomyRepository.find({
         select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
-        where: { IsActive: 1, TaxnomyType: type },
+        where: { IsActive:true, TaxnomyType: type },
       });
+    }else if(subsidiary_id>0){
+      return await this.drpTaxnomyRepository.find({
+        select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
+        where: { IsActive:true, TaxnomyType: type,SubsidiaryId:subsidiary_id },
+      });
+    }
     } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
@@ -663,18 +694,21 @@ export class MasterService implements IMasterService {
           { IsLastRecord: false },
         );
 
-        await this.menuMasterRepository.update({MenuId:dto.menu_id}, {
-          MenuName: dto.menu_name,
-          Url: dto.url,
-          Icon: dto.icon,
-          IsActive: dto.isActive == 0 ? false : true,
-          ActiveRecord: dto.active_record == 0 ? false : true,
-          NewRecord: dto.new_record == 0 ? false : true,
-          EditRecord: dto.edit_record == 0 ? false : true,
-          ViewRecord: dto.view_record == 0 ? false : true,
-          modified_by: dto.userId,
-          modified_on: new Date(),
-        });
+        await this.menuMasterRepository.update(
+          { MenuId: dto.menu_id },
+          {
+            MenuName: dto.menu_name,
+            Url: dto.url,
+            Icon: dto.icon,
+            IsActive: dto.isActive == 0 ? false : true,
+            ActiveRecord: dto.active_record == 0 ? false : true,
+            NewRecord: dto.new_record == 0 ? false : true,
+            EditRecord: dto.edit_record == 0 ? false : true,
+            ViewRecord: dto.view_record == 0 ? false : true,
+            modified_by: dto.userId,
+            modified_on: new Date(),
+          },
+        );
 
         const menuHistTbl = new BRI_MasterMenuHistory();
         menuHistTbl.Icon = dto.icon;
@@ -700,7 +734,7 @@ export class MasterService implements IMasterService {
           );
           if (obj != null && obj.IsActive == false) {
             await this.menuGroupRepository.update(
-              { GroupMenuId: obj.GroupMenuId,MenuId:obj.MenuId },
+              { GroupMenuId: obj.GroupMenuId, MenuId: obj.MenuId },
               { IsActive: true },
             );
 
@@ -783,7 +817,7 @@ export class MasterService implements IMasterService {
     }
   }
 
-  async menu_mapped_group_list(menu_id): Promise<any> {
+  async menu_mapped_group_list(menu_id: number): Promise<any> {
     try {
       const qb = this.menuGroupRepository.createQueryBuilder('mg');
       qb.innerJoin(
@@ -795,10 +829,13 @@ export class MasterService implements IMasterService {
       qb.addSelect('g.TaxnomyCode', 'GroupCode');
       qb.addSelect('g.TaxnomyName', 'GroupName');
 
-      qb.where('mg.IsActive = 1 AND g.TaxnomyType = :type AND mg.MenuId=:menu_id', {
-        type: 'MenuGroup',
-        menu_id:menu_id
-      });
+      qb.where(
+        'mg.IsActive = 1 AND g.TaxnomyType = :type AND mg.MenuId=:menu_id',
+        {
+          type: 'MenuGroup',
+          menu_id: menu_id,
+        },
+      );
       const dropdown = await qb.getRawMany();
       return dropdown;
     } catch (e) {
@@ -810,76 +847,77 @@ export class MasterService implements IMasterService {
   }
 
   async role_menu_permission(dtos: newRolePermissionDto): Promise<any> {
+    try {
+      console.log(dtos, ' permission dto');
+      for await (const dto of dtos.permission) {
+        if (dto.rolePermissionId == 0) {
+          const perTbl = new BRI_AuthRolePermission();
+          perTbl.MenuId = dto.menuId;
+          perTbl.GroupMenuId = dto.groupMenuId;
+          perTbl.RoleId = dtos.RoleId;
+          if (dtos.subsidiary_id > 0) perTbl.SubsidiaryId = dtos.subsidiary_id;
+          perTbl.IsActive = dto.isActive == 1 ? true : false;
+          perTbl.IsAllowEditRecord = dto.edit_record == 1 ? true : false;
+          perTbl.IsAllowNewRecord = dto.new_record == 1 ? true : false;
+          perTbl.IsAllowViewRecord = dto.view_record == 1 ? true : false;
+          perTbl.created_by = dtos.userId;
+          perTbl.created_on = new Date();
+          const db = await this.authRoleRepository.save(perTbl);
+          if (db) {
+            const perHisTbl = new BRI_AuthRolePermissionHistory();
+            perHisTbl.MenuId = dto.MenuId;
+            perTbl.GroupMenuId = dto.groupMenuId;
+            perHisTbl.RoleId = dtos.RoleId;
+            if (dtos.subsidiary_id > 0)
+              perHisTbl.SubsidiaryId = dtos.subsidiary_id;
+            perHisTbl.IsActive = dto.isActive == 1 ? true : false;
+            perHisTbl.IsAllowEditRecord = dto.edit_record == 1 ? true : false;
+            perHisTbl.IsAllowNewRecord = dto.new_record == 1 ? true : false;
+            perHisTbl.IsAllowViewRecord = dto.view_record == 1 ? true : false;
+            perHisTbl.RolePermissionId = db.RolePermissionId;
+            perHisTbl.created_by = dtos.userId;
+            perHisTbl.created_on = new Date();
+            perHisTbl.IsLastRecord = true;
+            const dbHist =
+              await this.authRoleHistoryRepository.insert(perHisTbl);
+          }
+        } else if (dto.rolePermissionId > 0) {
+          await this.authRoleHistoryRepository.update(
+            { RolePermissionId: dto.rolePermissionId, IsLastRecord: true },
+            {
+              IsLastRecord: false,
+            },
+          );
 
-    try{
-      console.log(dtos,' permission dto');
-      for await(const dto of dtos.permission)
-      {
-      if(dto.rolePermissionId==0)
-      {
-        const perTbl=new BRI_AuthRolePermission();
-        perTbl.MenuId=dto.menuId;
-        perTbl.GroupMenuId=dto.groupMenuId;
-        perTbl.RoleId=dtos.RoleId;
-        if(dtos.subsidiary_id>0)
-        perTbl.SubsidiaryId=dtos.subsidiary_id;
-        perTbl.IsActive=dto.isActive==1?true:false;
-        perTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
-        perTbl.IsAllowNewRecord=dto.new_record==1?true:false;
-        perTbl.IsAllowViewRecord=dto.view_record==1?true:false;
-        perTbl.created_by=dtos.userId;
-        perTbl.created_on=new Date();
-        const db = await this.authRoleRepository.save(perTbl);
-        if(db)
-        {
-          const perHisTbl=new BRI_AuthRolePermissionHistory();
-          perHisTbl.MenuId=dto.MenuId;
-          perTbl.GroupMenuId=dto.groupMenuId;
-          perHisTbl.RoleId=dtos.RoleId;
-          if(dtos.subsidiary_id>0)
-          perHisTbl.SubsidiaryId=dtos.subsidiary_id;
-          perHisTbl.IsActive=dto.isActive==1?true:false;
-          perHisTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
-          perHisTbl.IsAllowNewRecord=dto.new_record==1?true:false;
-          perHisTbl.IsAllowViewRecord=dto.view_record==1?true:false;
-          perHisTbl.RolePermissionId=db.RolePermissionId;
-          perHisTbl.created_by=dtos.userId;
-          perHisTbl.created_on=new Date();
-          perHisTbl.IsLastRecord=true;
-          const dbHist=await this.authRoleHistoryRepository.insert(perHisTbl);
+          await this.authRoleRepository.update(
+            { RolePermissionId: dto.rolePermissionId },
+            {
+              IsActive: dto.isActive == 1 ? true : false,
+              IsAllowEditRecord: dto.edit_record == 1 ? true : false,
+              IsAllowNewRecord: dto.new_record == 1 ? true : false,
+              IsAllowViewRecord: dto.view_record == 1 ? true : false,
+            },
+          );
+
+          const perHisTbl = new BRI_AuthRolePermissionHistory();
+          perHisTbl.MenuId = dto.MenuId;
+          perHisTbl.GroupMenuId = dto.groupMenuId;
+          perHisTbl.RoleId = dtos.RoleId;
+          if (dtos.subsidiary_id > 0)
+            perHisTbl.SubsidiaryId = dtos.subsidiary_id;
+          perHisTbl.IsActive = dto.isActive == 1 ? true : false;
+          perHisTbl.IsAllowEditRecord = dto.edit_record == 1 ? true : false;
+          perHisTbl.IsAllowNewRecord = dto.new_record == 1 ? true : false;
+          perHisTbl.IsAllowViewRecord = dto.view_record == 1 ? true : false;
+          perHisTbl.RolePermissionId = dto.rolePermissionId;
+          perHisTbl.created_by = dtos.userId;
+          perHisTbl.created_on = new Date();
+          perHisTbl.IsLastRecord = true;
+          const dbHist = await this.authRoleHistoryRepository.insert(perHisTbl);
         }
-      }else if(dto.rolePermissionId>0){
-        await this.authRoleHistoryRepository.update({RolePermissionId:dto.rolePermissionId,IsLastRecord:true},{
-          IsLastRecord:false});
-
-          await this.authRoleRepository.update({RolePermissionId:dto.rolePermissionId},{
-          IsActive:dto.isActive==1?true:false,
-          IsAllowEditRecord:dto.edit_record==1?true:false,
-          IsAllowNewRecord:dto.new_record==1?true:false,
-          IsAllowViewRecord:dto.view_record==1?true:false,
-          });
-
-          const perHisTbl=new BRI_AuthRolePermissionHistory();
-          perHisTbl.MenuId=dto.MenuId;
-          perHisTbl.GroupMenuId=dto.groupMenuId;
-          perHisTbl.RoleId=dtos.RoleId;
-          if(dtos.subsidiary_id>0)
-          perHisTbl.SubsidiaryId=dtos.subsidiary_id;
-          perHisTbl.IsActive=dto.isActive==1?true:false;
-          perHisTbl.IsAllowEditRecord=dto.edit_record==1?true:false;
-          perHisTbl.IsAllowNewRecord=dto.new_record==1?true:false;
-          perHisTbl.IsAllowViewRecord=dto.view_record==1?true:false;
-          perHisTbl.RolePermissionId=dto.rolePermissionId;
-          perHisTbl.created_by=dtos.userId;
-          perHisTbl.created_on=new Date();
-          perHisTbl.IsLastRecord=true;
-          const dbHist=await this.authRoleHistoryRepository.insert(perHisTbl);
       }
-      }
-      return "Permission saved successfully";
-      
-    }catch(e)
-    {
+      return 'Permission saved successfully';
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -887,13 +925,22 @@ export class MasterService implements IMasterService {
     }
   }
 
-  async menu_role_permission(dto):Promise<any>{
-    try{
-      const param = 'exec BRI_USP_RoleMenuPermission_Table ' + dto.role_id+','+dto.group_id+','+dto.subsidiary_id;
+  async menu_role_permission(dto: {
+    role_id: any;
+    group_id: any;
+    subsidiary_id: any;
+  }): Promise<any> {
+    try {
+      const param =
+        'exec BRI_USP_RoleMenuPermission_Table ' +
+        dto.role_id +
+        ',' +
+        dto.group_id +
+        ',' +
+        dto.subsidiary_id;
       const data = this.employeeRepository.query(param);
       return data;
-    }catch(e)
-    {
+    } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -901,7 +948,392 @@ export class MasterService implements IMasterService {
     }
   }
 
-  
+  async masterData(): Promise<any> {
+    try {
+      await this.workORderMasterData();
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async workORderMasterData() {
+    try {
+      const body = await axios.get(
+        'https://internal4netsuiteapi.app-brisigns.com/api/masterData',
+      );
+      //console.log(body.data.param, 'nest js body');
+      const loc = await this.drpTaxnomyRepository.find({
+        where: { TaxnomyType: 'Location' },
+      });
+      const subsidary = await this.drpTaxnomyRepository.find({
+        where: { TaxnomyType: 'SUBSIDIARY' },
+      });
+      const workStatus = await this.drpTaxnomyRepository.find({
+        where: { TaxnomyType: 'WorkOrderStatus' },
+      });
+      const workOrderStepStatus = await this.drpTaxnomyRepository.find({
+        where: { TaxnomyType: 'DepartmentStatus', IsActive: true },
+      });
+      
+      for await (const obj of body.data.param) {
+        let department =[];
+        department= await this.departmentRepository.find();
+        let workDb =[];
+        workDb= await this.workorderMasterRepository.find({
+          where: 
+            [{NetsuiteID: obj.internalid,
+            WorkOrderNo: obj.workorder_number}]
+          ,
+        });
+        console.log(workDb,obj.workorder_number,' workorder')
+        const sub = subsidary.find((x) => x.TaxnomyName == obj.subsidiary);
+        console.log(department,'department');
+        const locData = loc.find(
+          (x) => x.TaxnomyName == obj.document_location,
+        );
+        const dep = department.find(
+          (x) =>
+            x.DepartmentName == obj.department_name &&
+            x.SubsidiaryId == sub.TaxnomyId &&
+            x.LocationId==locData.TaxnomyId
+        );
+        console.log(locData,obj.document_location);
+        
+        if (dep == null) {
+          const depTbl = new BRI_MasterDepartment();
+          depTbl.DepartmentCode = obj.department_name;
+          depTbl.DepartmentName = obj.department_name;
+          depTbl.IsActive = true;
+          depTbl.SubsidiaryId = sub.TaxnomyId;
+          depTbl.LocationId=locData.TaxnomyId;
+          depTbl.CreatedBy = -1;
+          depTbl.CreatedOn = new Date();
+          const db = await this.departmentRepository.save(depTbl,{reload:true});
+          department = await this.departmentRepository.find();
+          //department.push(db);
+        }
+        //console.log(workDb.length,' workDb.length == 0')
+        if (workDb.length == 0) {
+          const wo = new BRI_WorkOrderMaster();
+          wo.IsActive = true;
+          // const locData = loc.find(
+          //   (x) => x.TaxnomyName == obj.document_location,
+          // );
+          wo.Location = locData.TaxnomyId;
+          wo.ManufacturingRouting = obj.manufacturing_routing;
+          wo.ProjectID = obj.project_id;
+          wo.NetsuiteID = obj.internalid;
+          wo.ProjectName = obj.project_name;
+          wo.SubProjectID = obj.sub_project_id;
+          wo.SubProjectInternalID = obj.sub_project_internalid;
+          wo.SubProjectName = obj.sub_project_name;
+          wo.Subsidiary = obj.subsidiary;
+          wo.SubsidiaryID = sub.TaxnomyId;
+          wo.WorkOrderNo = obj.workorder_number;
+          wo.created_on = new Date();
+          wo.BusinessUnit=obj.business_unit_name;
+          wo.BusinessUnitId=obj.business_unit_id;
+          const s = workStatus.find((x) => x.TaxnomyCode == 'YetToStart');
+          wo.StatusID = s.TaxnomyId;
+          const ws = await this.workorderMasterRepository.save(wo,{reload:true});
+          //break;
+          if (ws.WorkOrderID > 0) {
+            const depart = department.find(
+              (x) =>
+                x.DepartmentName == obj.department_name &&
+                x.SubsidiaryId == sub.TaxnomyId &&
+                x.IsActive == true &&
+                x.LocationId==locData.TaxnomyId
+            );
+            const wsstatus = workOrderStepStatus.find(
+              (x) => x.TaxnomyCode == 'YetToStart',
+            );
+            const wms = new BRI_WorkOrderSteps();
+            wms.WorkOrderID = ws.WorkOrderID;
+            wms.IsActive = true;
+            wms.CreatedOn = new Date();
+            wms.DepartmentID = depart.DepartmentId;
+            wms.DepartmentName = depart.DepartmentName;
+            wms.ExecutionOrder = obj.operation_sequnce;
+            wms.StatusId = wsstatus.TaxnomyId;
+            const saveWS = await this.workorderStepsRepository.save(wms);
+            if (saveWS.WorkOrderStepID > 0) {
+              const wmsh = new BRI_WorkOrderStepsHistory();
+              wmsh.WorkOrderStepID = saveWS.WorkOrderStepID;
+              wmsh.WorkOrderID = saveWS.WorkOrderID;
+              wmsh.IsActive = true;
+              wmsh.CreatedOn = new Date();
+              wmsh.DepartmentID = saveWS.DepartmentID;
+              wmsh.DepartmentName = saveWS.DepartmentName;
+              wmsh.ExecutionOrder = saveWS.ExecutionOrder;
+              wmsh.StatusId = saveWS.StatusId;
+              wmsh.IsLastRecord = true;
+              await this.workorderStepsHistoryRepository.save(wmsh);
+            }
+
+            const woH = new BRI_WorkOrderMasterHistory();
+            woH.IsActive = true;
+            woH.IsLastRecord = true;
+            woH.WorkOrderID = ws.WorkOrderID;
+            woH.Location = locData.TaxnomyId;
+            woH.ManufacturingRouting = obj.manufacturing_routing;
+            woH.ProjectID = obj.project_id;
+            woH.NetsuiteID = obj.internalid;
+            woH.ProjectName = obj.project_name;
+            woH.SubProjectID = obj.sub_project_id;
+            woH.SubProjectInternalID = obj.sub_project_internalid;
+            woH.SubProjectName = obj.sub_project_name;
+            woH.Subsidiary = obj.subsidiary;
+            woH.SubsidiaryID = sub.TaxnomyId;
+            woH.WorkOrderNo = obj.workorder_number;
+            woH.created_on = new Date();
+            woH.StatusID = ws.StatusID;
+            woH.BusinessUnit=obj.business_unit_name;
+            woH.BusinessUnitId=obj.business_unit_id;
+            const wsH = await this.workorderMasterHistoryRepository.save(woH);
+          }
+        } else if (workDb.length > 0) {
+          const workStepList = await this.workorderStepsRepository.find({
+            where: [
+           {   DepartmentName: obj.department_name,
+              WorkOrderID: workDb[0].WorkOrderID,
+          }],
+          });
+          if (workStepList.length == 0) {
+            const sub = subsidary.find((x) => x.TaxnomyName == obj.subsidiary);
+            const dep = department.find(
+              (x) =>
+                x.DepartmentName == obj.department_name &&
+                x.SubsidiaryId == sub.TaxnomyId &&
+                x.LocationId==locData.TaxnomyId
+            );
+            const wsstatus = workOrderStepStatus.find(
+              (x) => x.TaxnomyCode == 'YetToStart',
+            );
+            const wms = new BRI_WorkOrderSteps();
+            wms.WorkOrderID = workDb[0].WorkOrderID;
+            wms.IsActive = true;
+            wms.CreatedOn = new Date();
+            wms.DepartmentID = dep.DepartmentId;
+            wms.DepartmentName = dep.DepartmentName;
+            wms.ExecutionOrder = obj.operation_sequnce;
+            wms.StatusId = wsstatus.TaxnomyId;
+            const saveWS = await this.workorderStepsRepository.save(wms);
+            if (saveWS.WorkOrderStepID > 0) {
+              const wmsh = new BRI_WorkOrderStepsHistory();
+              wmsh.WorkOrderStepID = saveWS.WorkOrderStepID;
+              wmsh.WorkOrderID = saveWS.WorkOrderID;
+              wmsh.IsActive = true;
+              wmsh.CreatedOn = new Date();
+              wmsh.DepartmentID = saveWS.DepartmentID;
+              wmsh.DepartmentName = saveWS.DepartmentName;
+              wmsh.ExecutionOrder = saveWS.ExecutionOrder;
+              wmsh.StatusId = saveWS.StatusId;
+              wmsh.IsLastRecord = true;
+              await this.workorderStepsHistoryRepository.save(wmsh);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('crone job running', e);
+    }
+  }
+
+  async new_work_order_list(dto: allWorkorderTableDto): Promise<any> {
+    try {
+      const location=dto.location==null?null:'"'+dto.location+'"';
+      const ReleaseDate=dto.ReleaseDate==null?null:'"'+dto.ReleaseDate+'"';
+      const order_by=dto.order_by==null?null:'"'+dto.order_by+'"';
+      const sort=dto.sort==null?null:'"'+dto.sort+'"';
+      const search=dto.search==null?null:'"'+dto.search+'"';
+      const param =
+        'exec BRI_USP_AllWorkOrder ' +location+','+ ReleaseDate+',' +dto.start+',' +dto.page_size +','+ order_by
+        +','+sort+','+search;
+        console.log(param,'sp params');
+      const data = this.workorderMasterRepository.query(param);
+      return data;
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async bulk_activeInactive(dto: bulkActivInActiveDto): Promise<any> {
+    try{
+      if(dto.master==='EmailAlert')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.alertMasterRepository.findOne({where:{AlertId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.alertMasterHistoryRepository.findOne({where:{AlertId:id,IsLastRecord:1}});
+              const mu=await this.alertMasterRepository.update({AlertId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.alertMasterHistoryRepository.update({AlertId:id,IsLastRecord:1},{IsLastRecord:0});
+                hist.IsActive=exist.IsActive?0:1;
+                hist.HistId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.alertMasterHistoryRepository.save(hist);
+              }
+            }
+
+          }
+      }
+      else if(dto.master==='Machinery')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.machineRepository.findOne({where:{MachineId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.macHistoryRepository.findOne({where:{MachineId:id,IsLastRecord:1}});
+              const mu=await this.machineRepository.update({MachineId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.macHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
+                hist.IsActive=exist.IsActive?0:1;
+                hist.HistoryId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.macHistoryRepository.save(hist);
+              }
+            }
+
+          }
+      }
+      else if(dto.master==='Employee')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.employeeRepository.findOne({where:{EmployeeId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.employeeHistoryRepository.findOne({where:{EmployeeId:id,isLastRecord:1}});
+              const mu=await this.employeeRepository.update({EmployeeId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.employeeHistoryRepository.update({HistoryId:hist.HistoryId,isLastRecord:1},{isLastRecord:0});
+                hist.IsActive=exist.IsActive?0:1;
+                hist.HistoryId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.employeeHistoryRepository.save(hist);
+              }
+            }
+
+          }
+      }
+      else if(dto.master==='Menu')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.menuMasterRepository.findOne({where:{MenuId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.menuMasterHistoryRepository.findOne({where:{MenuId:id,IsLastRecord:true}});
+              const mu=await this.menuMasterRepository.update({MenuId:id},{IsActive:exist.IsActive?false:true,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.menuMasterHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:true},{IsLastRecord:false});
+                hist.IsActive=exist.IsActive?false:true;
+                hist.HistoryId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.menuMasterHistoryRepository.save(hist);
+              }
+            }
+
+          }
+      }
+      else if(dto.master==='Roles')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.roleRepository.findOne({where:{RoleId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.roleHistoryRepository.findOne({where:{RoleId:id,IsLastRecord:1}});
+              const mu=await this.roleRepository.update({RoleId:id},{IsActive:exist.IsActive?false:true,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.roleHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
+                hist.IsActive=exist.IsActive?false:true;
+                hist.HistoryId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.roleHistoryRepository.save(hist);
+              }
+            }
+
+          }
+      }
+      else if(dto.master==='User')
+      {
+          for await(const id of dto.masterId)
+          {
+            const exist=await this.userMasterRepository.findOne({where:{UserId:id},select:{IsActive:true}});
+            if(exist)
+            {
+              const hist=await this.userHistRepository.findOne({where:{UserId:id,IsLastRecord:1}});
+              const mu=await this.userMasterRepository.update({UserId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
+              if(mu.affected>0)
+              {
+                const hu=await this.userHistRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
+                hist.IsActive=exist.IsActive?0:1;
+                hist.HistoryId=null;
+                hist.created_by=dto.userId;
+                hist.created_on=new Date();
+                await this.userHistRepository.save(hist);
+              }
+            }
+
+          }
+      }
+
+      return 'Changes saved successfully.';
+
+    }catch (e) {
+      console.log(e);
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // @Cron('5 * * * * *', {
+  //   name: 'notifications',
+  // })
+  async handleCron() {
+    try {
+      console.log('crone job running waiting for previous one');
+      //await this.workORderMasterData();
+      console.log('crone job completed');
+      
+      const job = this.schedulerRegistry.getCronJob('notifications');
+      let dt =new Date();
+      
+      console.log(dt,' current date time');
+      dt.setMinutes(dt.getMinutes()+5);
+      console.log(dt,' new crone date time');
+      // const neDt=new Date(dt);
+      // job.setTime(dt);
+      // job.stop();
+      // console.log(job.lastDate());
+    } catch (e) {}
+    console.log('crone job running');
+    this.logger.debug('Called when the current second is 45');
+  }
+
   async customResponse(
     data: object,
     message: string,
@@ -927,7 +1359,14 @@ export class MasterService implements IMasterService {
     );
   }
 
-  async sendEmail(to, from, subject, html, cc, text) {
+  async sendEmail(
+    to: any,
+    from: any,
+    subject: any,
+    html: any,
+    cc: any,
+    text: any,
+  ) {
     console.log('sendEmail');
     try {
       return await this.mailerService.sendMail({

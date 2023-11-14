@@ -3,10 +3,6 @@
 /* eslint-disable prettier/prettier */
 import {
   Injectable,
-  HttpStatus,
-  HttpException,
-  BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import { ResponseDto } from '../dto/response.dto';
 
@@ -67,4 +63,9 @@ export class CommonService {
     const userCode = randUniqid + randNumber;
     return userCode;
   }
+
+
+
 }
+
+

@@ -16,6 +16,7 @@ import { ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
 import { get } from 'http';
 import { HttpExceptionFilter } from '../shared/exception-filters/http-exception.filter';
 import {
+  allWorkorderTableDto,
   emailAlertTableDto,
   employeeTableDto,
   machineryTableDto,
@@ -274,6 +275,31 @@ export class MasterController {
     return this.iMasterService.customResponse(
       response,
       'Role Permission List!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @UsePipes(new ValidationPipe())
+  @Get('masterData')
+  public async masterData(): Promise<any> {
+    const response = await this.iMasterService.masterData();
+    return this.iMasterService.customResponse(
+      response,
+      'Role Permission List!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
+  @ApiBody({ type: allWorkorderTableDto })
+  @UsePipes(new ValidationPipe())
+  @Post('work_order_list_all')
+  public async work_order_list_all(
+    @Body() tableDto: allWorkorderTableDto,
+  ): Promise<any> {
+    const response = await this.iMasterService.new_work_order_list(tableDto);
+    return this.iMasterService.customResponse(
+      response,
+      'Workorder List!',
       HttpStatus.OK.toString(),
     );
   }

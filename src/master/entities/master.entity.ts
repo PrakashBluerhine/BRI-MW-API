@@ -230,18 +230,21 @@ export class BRI_MasterDepartment {
 
   @Column({ name: 'DepartmentName' })
   DepartmentName: string;
-
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+  @Column({ name: 'LocationId' })
+  LocationId: number;  
   @Column({ name: 'IsActive' })
-  IsActive: number;
+  IsActive: boolean;
 
   @Column({ name: 'CreatedOn' })
-  created_on: Date;
+  CreatedOn: Date;
   @Column({ name: 'CreatedBy' })
-  created_by: number;
+  CreatedBy: number;
   @Column({ name: 'ModifiedOn' })
-  modified_on: Date;
+  ModifiedOn: Date;
   @Column({ name: 'ModifiedBy' })
-  modified_by: number;
+  ModifiedBy: number;
 }
 
 @Entity({ name: 'BRI_OperationTaxnomy' })
@@ -272,7 +275,7 @@ export class BRI_OperationTaxnomy {
   @Column({ name: 'NetsuiteId' })
   NetsuiteId: number;
   @Column({ name: 'IsActive' })
-  IsActive: number;
+  IsActive: boolean;
 
   @Column({ name: 'CreatedOn' })
   created_on: Date;
@@ -584,4 +587,324 @@ export class BRI_AuthRolePermissionHistory {
   created_on: Date;
   @Column({ name: 'CreatedBy' })
   created_by: number;
+}
+
+@Entity({ name: 'BRI_WorkOrderMaster' })
+export class BRI_WorkOrderMaster {
+  @PrimaryGeneratedColumn({ name: 'WorkOrderID' })
+  WorkOrderID: number;
+  @Column({ name: 'NetsuiteID' })
+  NetsuiteID: number;
+  @Column({ name: 'WorkOrderNo' })
+  WorkOrderNo: string;
+  @Column({ name: 'StatusID' })
+  StatusID: number;
+  @Column({ name: 'ProjectName' })
+  ProjectName: string;
+  @Column({ name: 'ProjectID' })
+  ProjectID: string;
+  @Column({ name: 'Subsidiary' })
+  Subsidiary: string;
+  @Column({ name: 'SubsidiaryID' })
+  SubsidiaryID: number;
+  @Column({ name: 'SubProjectName' })
+  SubProjectName: string;
+  @Column({ name: 'SubProjectID' })
+  SubProjectID: string;
+  @Column({ name: 'SubProjectInternalID' })
+  SubProjectInternalID: number;
+  @Column({ name: 'ManufacturingRouting' })
+  ManufacturingRouting: string;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsCancelled' })
+  IsCancelled: boolean;
+  @Column({ name: 'CancelledOn' })
+  CancelledOn: Date;
+  @Column({ name: 'IsDeleted' })
+  IsDeleted: boolean;
+  @Column({ name: 'DeletedOn' })
+  DeletedOn: Date;
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+  @Column({ name: 'Location' })
+  Location: number;
+  @Column({ name: 'BusinessUnit' })
+  BusinessUnit: string;
+  @Column({ name: 'BusinessUnitId' })
+  BusinessUnitId: string;
+}
+
+@Entity({ name: 'BRI_WorkOrderMasterHistory' })
+export class BRI_WorkOrderMasterHistory {
+  @PrimaryGeneratedColumn({ name: 'HistoryID' })
+  HistoryID: number;
+  @Column({ name: 'WorkOrderID' })
+  WorkOrderID: number;
+  @Column({ name: 'NetsuiteID' })
+  NetsuiteID: number;
+  @Column({ name: 'WorkOrderNo' })
+  WorkOrderNo: string;
+  @Column({ name: 'StatusID' })
+  StatusID: number;
+  @Column({ name: 'ProjectName' })
+  ProjectName: string;
+  @Column({ name: 'ProjectID' })
+  ProjectID: string;
+  @Column({ name: 'NsSubsidiary' })
+  NsSubsidiary: string;
+  @Column({ name: 'NsSubsidiaryId' })
+  NsSubsidiaryId: number;
+  @Column({ name: 'Subsidiary' })
+  Subsidiary: string;
+  @Column({ name: 'SubsidiaryID' })
+  SubsidiaryID: number;
+  @Column({ name: 'SubProjectName' })
+  SubProjectName: string;
+  @Column({ name: 'SubProjectID' })
+  SubProjectID: string;
+  @Column({ name: 'SubProjectInternalID' })
+  SubProjectInternalID: number;
+  @Column({ name: 'ManufacturingRouting' })
+  ManufacturingRouting: string;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsCancelled' })
+  IsCancelled: boolean;
+  @Column({ name: 'CancelledOn' })
+  CancelledOn: Date;
+  @Column({ name: 'IsDeleted' })
+  IsDeleted: boolean;
+  @Column({ name: 'DeletedOn' })
+  DeletedOn: Date;
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'IsLastRecord' })
+  IsLastRecord: boolean;
+  @Column({ name: 'Location' })
+  Location: number;
+  @Column({ name: 'BusinessUnit' })
+  BusinessUnit: string;
+  @Column({ name: 'BusinessUnitId' })
+  BusinessUnitId: string;
+}
+
+@Entity({ name: 'BRI_WorkOrderSteps' })
+export class BRI_WorkOrderSteps {
+  @PrimaryGeneratedColumn({ name: 'WorkOrderStepID' })
+  WorkOrderStepID: number;
+  @Column({ name: 'WorkOrderID' })
+  WorkOrderID: number;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'PlanedStartDate' })
+  PlanedStartDate: Date;
+  @Column({ name: 'PlanedEndDate' })
+  PlanedEndDate: Date;
+  @Column({ name: 'ActualStartDate' })
+  ActualStartDate: Date;
+  @Column({ name: 'ActualEndDate' })
+  ActualEndDate: Date;
+  @Column({ name: 'DepartmentName' })
+  DepartmentName: string;
+  @Column({ name: 'DepartmentID' })
+  DepartmentID: number;
+  @Column({ name: 'IsHold' })
+  IsHold: boolean;
+  @Column({ name: 'ExecutionOrder' })
+  ExecutionOrder: number;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsQcDone' })
+  IsQcDone: boolean;
+ 
+}
+
+@Entity({ name: 'BRI_WorkOrderStepsHistory' })
+export class BRI_WorkOrderStepsHistory {
+  @PrimaryGeneratedColumn({ name: 'HistoryId' })
+  HistoryId: number;
+  @Column({ name: 'WorkOrderStepID' })
+  WorkOrderStepID: number;
+  @Column({ name: 'WorkOrderID' })
+  WorkOrderID: number;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'PlanedStartDate' })
+  PlanedStartDate: Date;
+  @Column({ name: 'PlanedEndDate' })
+  PlanedEndDate: Date;
+  @Column({ name: 'ActualStartDate' })
+  ActualStartDate: Date;
+  @Column({ name: 'ActualEndDate' })
+  ActualEndDate: Date;
+  @Column({ name: 'DepartmentName' })
+  DepartmentName: string;
+  @Column({ name: 'DepartmentID' })
+  DepartmentID: number;
+  @Column({ name: 'IsHold' })
+  IsHold: boolean;
+  @Column({ name: 'ExecutionOrder' })
+  ExecutionOrder: number;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  ModifiedBy: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'IsQcDone' })
+  IsQcDone: boolean;
+  @Column({ name: 'IsLastRecord' })
+  IsLastRecord: boolean;
+}
+
+@Entity({ name: 'BRI_AuthUsers' })
+export class BRI_AuthUsers {
+  @PrimaryGeneratedColumn({ name: 'UserId' })
+  UserId: number;
+
+  @Column({ name: 'UserName' })
+  UserName: string;
+
+  @Column({ name: 'Password' })
+  Password: string;
+
+  @Column({ name: 'PasswordHash' })
+  PasswordHash: string;
+
+  @Column({ name: 'Email' })
+  Email: string;
+
+  @Column({ name: 'MobileNo' })
+  MobileNo: string;
+
+  @Column({ name: 'DepartmentId' })
+  DepartmentId: number;
+
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+
+  @Column({ name: 'LocationId' })
+  LocationId: number;
+  
+  @Column({ name: 'FirstName' })
+  FirstName: string;
+
+  @Column({ name: 'LastName' })
+  LastName: string;
+
+  @Column({ name: 'EmployeeCode' })
+  EmployeeCode: string;
+
+  @Column({ name: 'EmployeeId' })
+  EmployeeId: number;
+
+  @Column({ name: 'DOB' })
+  DOB: Date;
+
+  @Column({ name: 'ProfileImageID' })
+  ProfileImageID: number;
+
+  @Column({ name: 'IsActive' })
+  IsActive: number;
+
+  @Column({ name: 'IsLocked' })
+  IsLocked: number;
+
+  @Column({ name: 'IsDeleted' })
+  IsDeleted: number;
+
+  @Column({ name: 'DeletedOn' })
+  DeletedOn: Date;
+  @Column({ name: 'ResetToken' })
+  ResetToken: string;
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'TokenExpairyOn' })
+  TokenExpairyOn: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'ModifiedOn' })
+  modified_on: Date;
+  @Column({ name: 'ModifiedBy' })
+  modified_by: number;
+}
+
+@Entity({ name: 'BRI_AuthUsersHistory' })
+export class BRI_AuthUsersHistory {
+  @PrimaryGeneratedColumn({ name: 'HistoryId' })
+  HistoryId: number;
+  @Column({ name: 'UserId' })
+  UserId: number;
+  @Column({ name: 'UserName' })
+  UserName: string;
+
+  @Column({ name: 'Password' })
+  Password: string;
+
+  @Column({ name: 'PasswordHash' })
+  PasswordHash: string;
+
+  @Column({ name: 'Email' })
+  Email: string;
+
+  @Column({ name: 'MobileNo' })
+  MobileNo: string;
+
+  @Column({ name: 'DepartmentId' })
+  DepartmentId: number;
+
+  @Column({ name: 'SubsidiaryId' })
+  SubsidiaryId: number;
+
+  @Column({ name: 'FirstName' })
+  FirstName: string;
+
+  @Column({ name: 'LastName' })
+  LastName: string;
+
+  @Column({ name: 'EmployeeCode' })
+  EmployeeCode: string;
+
+  @Column({ name: 'EmployeeId' })
+  EmployeeId: number;
+
+  @Column({ name: 'DOB' })
+  DOB: Date;
+
+  @Column({ name: 'ProfileImageID' })
+  ProfileImageID: number;
+
+  @Column({ name: 'IsActive' })
+  IsActive: number;
+
+  @Column({ name: 'IsLocked' })
+  IsLocked: number;
+
+  @Column({ name: 'IsLastRecord' })
+  IsLastRecord: number;
+  
+  @Column({ name: 'CreatedOn' })
+  created_on: Date;
+  @Column({ name: 'CreatedBy' })
+  created_by: number;
+  @Column({ name: 'LocationId' })
+  LocationId: number;
 }

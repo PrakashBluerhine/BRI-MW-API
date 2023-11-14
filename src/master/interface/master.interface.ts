@@ -1,4 +1,5 @@
 import {
+  allWorkorderTableDto,
   emailAlertTableDto,
   employeeTableDto,
   machineryTableDto,
@@ -32,7 +33,9 @@ export interface IMasterService {
   menu_table(tblDto: TableDto): Promise<any>;
   menu_mapped_group_list(menu_id): Promise<any>;
   role_menu_permission(dtos: newRolePermissionDto): Promise<any>;
-  menu_role_permission(dto):Promise<any>;
+  menu_role_permission(dto): Promise<any>;
+  masterData(): Promise<any>;
+  new_work_order_list(dto: allWorkorderTableDto): Promise<any>;
   customResponse(
     data: object,
     message: string,

@@ -12,7 +12,14 @@ import { JwtCustomService } from '../shared/services/jwt-custom.service';
 
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
-import {BRI_AuthUsers,BRI_AuthUsersHistory,BRI_AuthUserRoleMap,BRI_AuthUserRoleMapHistory,BRI_AuthSession} from'./entities/user.entity';
+import {
+  BRI_AuthUsers,
+  BRI_AuthUsersHistory,
+  BRI_AuthUserRoleMap,
+  BRI_AuthUserRoleMapHistory,
+  BRI_AuthSession,
+  BRI_OperationTaxnomy
+} from './entities/user.entity';
 
 
 
@@ -24,7 +31,7 @@ import {BRI_AuthUsers,BRI_AuthUsersHistory,BRI_AuthUserRoleMap,BRI_AuthUserRoleM
         expiresIn: new ConfigService().get('JWT_EXPIRESIN')
       }
     }),
-    TypeOrmModule.forFeature([BRI_AuthUsers,BRI_AuthUsersHistory,BRI_AuthUserRoleMap,BRI_AuthUserRoleMapHistory,BRI_AuthSession]),
+    TypeOrmModule.forFeature([BRI_AuthUsers,BRI_AuthUsersHistory,BRI_AuthUserRoleMap,BRI_AuthUserRoleMapHistory,BRI_AuthSession,BRI_OperationTaxnomy]),
     SharedModule,
   ],
   providers: [
