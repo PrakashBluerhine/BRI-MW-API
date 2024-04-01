@@ -13,6 +13,8 @@ import { ResponseDto } from '../shared/dto/response.dto';
 import { JwtCustomService } from '../shared/services/jwt-custom.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DateTime } from 'luxon';
+import path, { join } from 'path';
+import fs, { readFileSync } from 'fs';
 import {
   BRI_MasterDepartment,
   BRI_MasterEmployee,
@@ -37,6 +39,12 @@ import {
   BRI_MasterItem,
   BRI_ScrapItemTimesheet,
   BRI_MachineTimesheet,
+  BRI_LabourMultiTaskTsDetails,
+  BRI_TimesheetItemMaser,
+  BRI_ChangeRequestFlow,
+  BRI_MachineTimesheetChangeRequest,
+  BRI_ScrapTSChangeRequest,
+  BRI_LabourTimeSheetChangeRequest,
 } from './entities/transaction.entity';
 import { ILike } from 'typeorm';
 import {
@@ -49,9 +57,12 @@ import {
   woOperationStart,
   woOperationHoldAndCompleteDto,
   mrTableDto,
+  tsTableDto,
+  tsChangeRequest,
 } from './dto/transaction.dto';
 
 import { MailerService } from '@nestjs-modules/mailer';
+import { from, identity, Subject, throwIfEmpty } from 'rxjs';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('dotenv').config({
@@ -113,6 +124,18 @@ export class TransactionService implements ITraansactionService {
     private readonly scrapItemTimesheetRepository: Repository<BRI_ScrapItemTimesheet>,
     @InjectRepository(BRI_MachineTimesheet)
     private readonly machineTimesheetRepository: Repository<BRI_MachineTimesheet>,
+    @InjectRepository(BRI_LabourMultiTaskTsDetails)
+    private readonly labourmMultiTaskTsRepository: Repository<BRI_LabourMultiTaskTsDetails>,
+    @InjectRepository(BRI_TimesheetItemMaser)
+    private readonly timesheetItemMasterRepository: Repository<BRI_TimesheetItemMaser>,
+    @InjectRepository(BRI_ChangeRequestFlow)
+    private readonly timsheetChangeRequestRepository: Repository<BRI_ChangeRequestFlow>,
+    @InjectRepository(BRI_MachineTimesheetChangeRequest)
+    private readonly machineTsChangeRequestRepository: Repository<BRI_MachineTimesheetChangeRequest>,
+    @InjectRepository(BRI_ScrapTSChangeRequest)
+    private readonly scrapTsChangeRequestRepository: Repository<BRI_ScrapTSChangeRequest>,
+    @InjectRepository(BRI_LabourTimeSheetChangeRequest)
+    private readonly labourTsChangeRequestRepository: Repository<BRI_LabourTimeSheetChangeRequest>,
 
     private readonly mailerService: MailerService,
   ) {
@@ -168,7 +191,9 @@ export class TransactionService implements ITraansactionService {
         ',' +
         sort +
         ',' +
-        search;
+        search +
+        ',' +
+        dto.filter;
       console.log(param, 'sp params');
       const data = this.workorderMasterRepository.query(param);
       return data;
@@ -207,8 +232,14 @@ export class TransactionService implements ITraansactionService {
       qb.where('wh.IsActive = 1 AND wh.ProjectID = :project_id ', {
         project_id: obj.project_id,
       });
+      if (obj.subsidiary_id > 0) {
+        qb.andWhere('wh.Location = :location_id', {
+          location_id: obj.subsidiary_id,
+        });
+      }
+
       qb.groupBy('wh.WorkOrderID,wh.WorkOrderNo');
-      // console.log(qb.getQuery());
+      console.log(qb.getQuery());
       return await qb.getRawMany();
     } catch (e) {
       throw new HttpException(
@@ -226,6 +257,7 @@ export class TransactionService implements ITraansactionService {
       const wo = 'exec BRI_USP_WorOrder_details ' + obj.workorder_id;
       const wo_details = await this.workorderMasterRepository.query(wo);
       const woDetails = wo_details.length > 0 ? wo_details[0] : {};
+      //  await this.workorderCompletionMailTrigger(obj.workorder_id);
       return { woDetails, plan_details };
     } catch (e) {
       throw new HttpException(
@@ -279,11 +311,47 @@ export class TransactionService implements ITraansactionService {
     department_id: any,
   ): Promise<any> {
     try {
+      // only use for timesheet api
       if (department_id > 0) {
-        return await this.employeeRepository.find({
-          select: { EmployeeId: true, EmployeeName: true, EmployeeCode: true },
-          where: { IsActive: true, DepartmentId: department_id },
+        const dep = await this.departmentRepository.findOne({
+          where: { DepartmentId: department_id },
         });
+        if (dep.DepartmentCode != 'CNC' && dep.DepartmentCode != 'Painting') {
+          return await this.departmentRepository.query(
+            'select EmployeeId,EmployeeName,EmployeeCode from BRI_View_Non_assigned_employeeForTs where DepartmentId=' +
+              department_id,
+          );
+        } else if (
+          dep.DepartmentCode == 'CNC' ||
+          dep.DepartmentCode == 'Painting'
+        ) {
+          const sql = this.employeeRepository.createQueryBuilder('me');
+          sql.innerJoin(
+            'BRI_EmployeeDepartmentMap',
+            'ed',
+            'ed.EmployeeId=me.EmployeeId AND ed.IsActive=1',
+          );
+
+          sql.select('me.EmployeeId', 'EmployeeId');
+          sql.addSelect('me.EmployeeName', 'EmployeeName');
+          sql.addSelect('me.EmployeeCode', 'EmployeeCode');
+          sql.where('ed.DepartmentId=:department_id', {
+            department_id: department_id,
+          });
+          // sql.where('ed.DepartmentId IN (:...department_id)', {
+          //   department_id
+          // });
+          const data = await sql.getRawMany();
+          return data;
+          // return await this.employeeRepository.find({
+          //   select: {
+          //     EmployeeId: true,
+          //     EmployeeName: true,
+          //     EmployeeCode: true,
+          //   },
+          //   where: { IsActive: true, DepartmentId: department_id },
+          // });
+        }
       } else {
         return await this.employeeRepository.find({
           select: { EmployeeId: true, EmployeeName: true, EmployeeCode: true },
@@ -291,6 +359,7 @@ export class TransactionService implements ITraansactionService {
         });
       }
     } catch (e) {
+      console.log(e);
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -326,7 +395,9 @@ export class TransactionService implements ITraansactionService {
           );
           const intiated = statusDat.find((x) => x.TaxnomyCode == 'Initiated');
           const completed = statusDat.find((x) => x.TaxnomyCode == 'Completed');
-          const inprogress = statusDat.find((x) => x.TaxnomyCode == 'InProgress');
+          const inprogress = statusDat.find(
+            (x) => x.TaxnomyCode == 'InProgress',
+          );
 
           const dbCheck = await this.workorderStepsRepository.find({
             where: { WorkOrderStepID: obj.workOrderStepID },
@@ -334,21 +405,20 @@ export class TransactionService implements ITraansactionService {
           const isAvail = dbCheck.find(
             (x) =>
               x.StatusId === yetToStart.TaxnomyId ||
-              x.StatusId === intiated.TaxnomyId
+              x.StatusId === intiated.TaxnomyId,
           );
 
           const isInprogress = dbCheck.find(
             (x) => x.StatusId === inprogress.TaxnomyId,
           );
-          
-          console.log(isInprogress,'isInprogress');
+
+          console.log(isInprogress, 'isInprogress');
           if (isAvail != null) {
-          
             // IF is active false the status should be completed
             const up = await this.workorderStepsRepository.update(
               {
                 WorkOrderStepID: obj.workOrderStepID,
-                WorkOrderID: dto.workOrderId
+                WorkOrderID: dto.workOrderId,
               },
               {
                 PlanedStartDate: obj.isActive ? obj.estimatedStart : null,
@@ -362,6 +432,7 @@ export class TransactionService implements ITraansactionService {
                 ModifiedBy: dto.UserId,
               },
             );
+
             if (up.affected > 0) {
               if (wo.length > 0) {
                 await this.workorderMasterRepository.update(
@@ -372,6 +443,24 @@ export class TransactionService implements ITraansactionService {
                     ModifiedOn: new Date(),
                   },
                 );
+
+                const mailRecipient = await this.alertMasterRepository.findOne({
+                  where: { AlertName: 'IntiatedEmailAlert', IsActive: 1 },
+                });
+                let toMail='prakash@brisigns.com';
+                if(mailRecipient!=null)
+                {
+                  toMail= mailRecipient.toEmail
+                }
+                this.sendEmail(
+                  toMail,
+                  '',
+                  wo[0].WorkOrderNo + ' is Intiated',
+                  '<h1>' + wo[0].WorkOrderNo + 'is Intiated </h1>',
+                  '',
+                  '',
+                );
+                // wo[0].WorkOrderNo;
 
                 wo = await this.workorderMasterRepository.find({
                   where: {
@@ -449,24 +538,21 @@ export class TransactionService implements ITraansactionService {
               await this.workorderStepsHistoryRepository.save(wmsh);
             }
           } else if (isInprogress != null) {
-            
-            console.log(isInprogress,'isInprogress inside loop');
+            console.log(isInprogress, 'isInprogress inside loop');
             const up = await this.workorderStepsRepository.update(
               {
                 WorkOrderStepID: obj.workOrderStepID,
-                WorkOrderID: dto.workOrderId
+                WorkOrderID: dto.workOrderId,
               },
               {
-               
-                PlanedEndDate:  obj.estimatedEnd ,
-                EstimatedLabourHr:  obj.estimatedLabourHr,
+                PlanedEndDate: obj.estimatedEnd,
+                EstimatedLabourHr: obj.estimatedLabourHr,
                 IsActive: obj.isActive,
                 ModifiedOn: new Date(),
                 ModifiedBy: dto.UserId,
               },
             );
             if (up.affected > 0) {
-           
               const hist = await this.workorderStepsHistoryRepository.findOne({
                 where: {
                   WorkOrderStepID: obj.workOrderStepID,
@@ -486,7 +572,7 @@ export class TransactionService implements ITraansactionService {
               wmsh.DepartmentID = hist.DepartmentID;
               wmsh.DepartmentName = hist.DepartmentName;
               wmsh.ExecutionOrder = hist.ExecutionOrder;
-           
+
               wmsh.PlanedEndDate = obj.isActive ? obj.estimatedStart : null;
               wmsh.EstimatedLabourHr = obj.isActive
                 ? obj.estimatedLabourHr
@@ -497,10 +583,7 @@ export class TransactionService implements ITraansactionService {
 
               await this.workorderStepsHistoryRepository.save(wmsh);
             }
-          }
-          
-          
-          else if (obj.isActive === true) {
+          } else if (obj.isActive === true) {
             // Already deactived now actived so completed status to yet to start status update
 
             const isCompleted = dbCheck.find(
@@ -556,10 +639,7 @@ export class TransactionService implements ITraansactionService {
               }
             }
           }
-         
         }
-
-
 
         const completed = statusDat.find((x) => x.TaxnomyCode == 'Completed');
         const woCompleted = woStatusDat.find(
@@ -624,7 +704,7 @@ export class TransactionService implements ITraansactionService {
                 StatusId: completed.TaxnomyId,
               },
             });
-            console.log(count , count1,'count != count1');
+          console.log(count, count1, 'count != count1');
           if (count != count1) {
             const depInprogressStatus = statusDat.find(
               (x) => x.TaxnomyCode == 'InProgress',
@@ -671,7 +751,7 @@ export class TransactionService implements ITraansactionService {
               woStatusCode = 'InProgress';
             }
 
-            console.log(woStatusCode,' woStatusCode')
+            console.log(woStatusCode, ' woStatusCode');
             if (woStatusCode != '') {
               const statusID = woStatusDat.find(
                 (x) => x.TaxnomyCode == woStatusCode,
@@ -735,6 +815,7 @@ export class TransactionService implements ITraansactionService {
               HoldedBy: dto.userId,
               ModifiedBy: dto.userId,
               ModifiedOn: new Date(),
+              HoldReasonId: dto.holdReasonId,
             },
           );
           const woHist = await this.workorderMasterHistoryRepository.findOne({
@@ -755,6 +836,7 @@ export class TransactionService implements ITraansactionService {
           woHist.HoldedOn = new Date();
           woHist.HoldedBy = dto.userId;
           woHist.IsLastRecord = true;
+          woHist.HoldReasonId = dto.holdReasonId;
 
           await this.workorderMasterHistoryRepository.save(woHist);
         } else if (dto.type == 'AllProject') {
@@ -769,7 +851,13 @@ export class TransactionService implements ITraansactionService {
             },
           );
           const woList = await this.workorderMasterRepository.find({
-            where: { ProjectID: dto.projectId, IsHolded: true },
+            where: {
+              ProjectID: dto.projectId,
+              IsHolded: true,
+              HoldedBy: dto.userId,
+              HoldedOn: new Date(),
+              HoldReasonId: dto.holdReasonId,
+            },
           });
           for await (const wo of woList) {
             const woHist = await this.workorderMasterHistoryRepository.findOne({
@@ -790,6 +878,7 @@ export class TransactionService implements ITraansactionService {
             woHist.HoldedOn = new Date();
             woHist.HoldedBy = dto.userId;
             woHist.IsLastRecord = true;
+            woHist.HoldReasonId = dto.holdReasonId;
 
             await this.workorderMasterHistoryRepository.save(woHist);
           }
@@ -803,6 +892,7 @@ export class TransactionService implements ITraansactionService {
               IsHolded: false,
               HoldedOn: null,
               HoldedBy: null,
+              HoldReasonId: null,
               ModifiedBy: dto.userId,
               ModifiedOn: new Date(),
             },
@@ -825,6 +915,7 @@ export class TransactionService implements ITraansactionService {
           woHist.HoldedOn = null;
           woHist.HoldedBy = null;
           woHist.IsLastRecord = true;
+          woHist.HoldReasonId = null;
 
           await this.workorderMasterHistoryRepository.save(woHist);
         } else if (dto.type == 'AllProject') {
@@ -836,6 +927,7 @@ export class TransactionService implements ITraansactionService {
               HoldedBy: null,
               ModifiedBy: dto.userId,
               ModifiedOn: new Date(),
+              HoldReasonId: null,
             },
           );
           const woList = await this.workorderMasterRepository.find({
@@ -860,6 +952,7 @@ export class TransactionService implements ITraansactionService {
             woHist.HoldedOn = null;
             woHist.HoldedBy = null;
             woHist.IsLastRecord = true;
+            woHist.HoldReasonId = null;
 
             await this.workorderMasterHistoryRepository.save(woHist);
           }
@@ -1212,7 +1305,8 @@ export class TransactionService implements ITraansactionService {
             mrdTbl.RequisitionID = mrSave.RequisitionID;
             mrdTbl.WorkOrderID = dto.workorderId;
             mrdTbl.WorkOrderStepID = dto.workorderStepId;
-            mrdTbl.WorkOrderItemId = wi;
+            mrdTbl.WorkOrderItemId = wi.id;
+            mrdTbl.Quantity = wi.quantity;
             const mrdSave =
               await this.itemRequissitionDetailsRepository.save(mrdTbl);
             if (mrdSave) {
@@ -1223,12 +1317,20 @@ export class TransactionService implements ITraansactionService {
               mrdHisTbl.RequisitionID = mrSave.RequisitionID;
               mrdHisTbl.WorkOrderID = dto.workorderId;
               mrdHisTbl.WorkOrderStepID = dto.workorderStepId;
-              mrdHisTbl.WorkOrderItemId = wi;
+              mrdHisTbl.WorkOrderItemId = wi.id;
+              mrdHisTbl.Quantity = wi.quantity;
               mrdHisTbl.IsLastRecord = true;
               mrdHisTbl.RequisitionDetailsID = mrdSave.RequisitionDetailsID;
               await this.itemRequissitionDetailsRepositoryHistory.save(
                 mrdHisTbl,
               );
+
+              const item = await this.workorderItemsRepository.findOne({
+                where: { WorkOrderItemId: wi.id },
+              });
+              await this.workorderItemsRepository.update(item.WorkOrderItemId, {
+                AvailableCount: item.AvailableCount - wi.quantity,
+              });
             }
           }
           return 'Meterial requsted successfully!';
@@ -1286,6 +1388,12 @@ export class TransactionService implements ITraansactionService {
 
   async workorder_operation_start(dto: woOperationStart): Promise<any> {
     try {
+      const dt = await this.drpTaxnomyRepository.query(
+        'select getdate() currentDt',
+      );
+      const department = await this.departmentRepository.findOne({
+        where: { DepartmentId: dto.departmentId },
+      });
       const wos = await this.drpTaxnomyRepository.find({
         where: { TaxnomyType: 'WorkOrderStatus', IsActive: true },
       });
@@ -1310,7 +1418,7 @@ export class TransactionService implements ITraansactionService {
           {
             StatusID: woInProgress.TaxnomyId,
             ModifiedBy: dto.userId,
-            ModifiedOn: new Date(),
+            ModifiedOn: new Date(dt[0].currentDt),
           },
         );
         if (wu.affected > 0) {
@@ -1325,7 +1433,7 @@ export class TransactionService implements ITraansactionService {
             woh.StatusID = woInProgress.TaxnomyId;
             woh.IsLastRecord = true;
             woh.created_by = dto.userId;
-            woh.created_on = new Date();
+            woh.created_on = new Date(dt[0].currentDt);
             woh.HistoryID = null;
             await this.workorderMasterHistoryRepository.save(woh);
           }
@@ -1335,8 +1443,13 @@ export class TransactionService implements ITraansactionService {
             {
               WorkOrderStepID: dto.workorderStepId,
               StatusId: wossIntiated.TaxnomyId,
+           
             },
-            { StatusId: wossInProgress.TaxnomyId, ActualStartDate: new Date() },
+            {
+              StatusId: wossInProgress.TaxnomyId,
+              ActualStartDate: new Date(dt[0].currentDt),
+              HoldReasonId:null
+            },
           );
           if (wosu.affected > 0) {
             const wosh = await this.workorderStepsHistoryRepository.findOne({
@@ -1350,12 +1463,13 @@ export class TransactionService implements ITraansactionService {
               { IsLastRecord: false },
             );
             if (wossHu.affected > 0) {
-              wosh.ActualStartDate = new Date();
+              wosh.ActualStartDate = new Date(dt[0].currentDt);
               wosh.CreatedBy = dto.userId;
-              wosh.CreatedOn = new Date();
+              wosh.CreatedOn = new Date(dt[0].currentDt);
               wosh.HistoryId = null;
               wosh.IsLastRecord = true;
               wosh.StatusId = wossInProgress.TaxnomyId;
+              wosh.HoldReasonId=null;
               await this.workorderStepsHistoryRepository.save(wosh);
             }
           } else {
@@ -1367,10 +1481,11 @@ export class TransactionService implements ITraansactionService {
               },
               {
                 StatusId: wossInProgress.TaxnomyId,
-                ActualStartDate: new Date(),
+                ActualStartDate: new Date(dt[0].currentDt),
                 IsHold: false,
                 HoldOn: null,
                 HoldRemarks: null,
+                HoldReasonId:null
               },
             );
             if (wosu.affected > 0) {
@@ -1385,12 +1500,13 @@ export class TransactionService implements ITraansactionService {
                 { IsLastRecord: false },
               );
               if (wossHu.affected > 0) {
-                wosh.ActualStartDate = new Date();
+                wosh.ActualStartDate = new Date(dt[0].currentDt);
                 wosh.CreatedBy = dto.userId;
-                wosh.CreatedOn = new Date();
+                wosh.CreatedOn = new Date(dt[0].currentDt);
                 wosh.HistoryId = null;
                 wosh.IsLastRecord = true;
                 wosh.StatusId = wossInProgress.TaxnomyId;
+                wosh.HoldReasonId=null;
                 await this.workorderStepsHistoryRepository.save(wosh);
               }
             }
@@ -1424,10 +1540,11 @@ export class TransactionService implements ITraansactionService {
           { WorkOrderStepID: dto.workorderStepId },
           {
             StatusId: wossInProgress.TaxnomyId,
-            ActualStartDate: new Date(),
+            ActualStartDate: new Date(dt[0].currentDt),
             IsHold: false,
             HoldOn: null,
             HoldRemarks: null,
+            HoldReasonId:null
           },
         );
         if (wosu.affected > 0) {
@@ -1442,18 +1559,19 @@ export class TransactionService implements ITraansactionService {
             { IsLastRecord: false },
           );
           if (wossHu.affected > 0) {
-            wosh.ActualStartDate = new Date();
+            wosh.ActualStartDate = new Date(dt[0].currentDt);
             wosh.CreatedBy = dto.userId;
-            wosh.CreatedOn = new Date();
+            wosh.CreatedOn = new Date(dt[0].currentDt);
             wosh.HistoryId = null;
             wosh.IsLastRecord = true;
             wosh.StatusId = wossInProgress.TaxnomyId;
+            wosh.HoldReasonId=null;
             await this.workorderStepsHistoryRepository.save(wosh);
           }
         }
 
         const ts = new BRI_TimeSheet();
-        ts.CreatedAt = new Date();
+        ts.CreatedAt = new Date(dt[0].currentDt);
         ts.CreatedBy = dto.userId;
         ts.DepartmentID = dto.departmentId;
         ts.IsActive = true;
@@ -1463,7 +1581,7 @@ export class TransactionService implements ITraansactionService {
           dto.departmentId,
           dto.locationId,
         );
-        ts.TimeSheetFor = new Date();
+        ts.TimeSheetFor = new Date(dt[0].currentDt);
         ts.WorkOrderID = dto.workorderId;
         ts.WorkOrderNo = woDet.WorkOrderNo;
         ts.IsClosed = false;
@@ -1472,13 +1590,59 @@ export class TransactionService implements ITraansactionService {
         for await (const emp of dto.employees) {
           const ltsTbl = new BRI_LabourTimeSheet();
           ltsTbl.CreatedBy = dto.userId;
-          ltsTbl.CreatedOn = new Date();
+          ltsTbl.CreatedOn = new Date(dt[0].currentDt);
           ltsTbl.IsActive = true;
           ltsTbl.LabourID = emp;
-          ltsTbl.StartTime = new Date();
+          ltsTbl.StartTime = new Date(dt[0].currentDt);
           ltsTbl.TimeSheetID = tss.TimeSheetID;
-          ltsTbl.TimeSheetOn = new Date();
-          await this.labourTsRepository.save(ltsTbl);
+          ltsTbl.TimeSheetOn = new Date(dt[0].currentDt);
+          const lts = await this.labourTsRepository.save(ltsTbl);
+          // CNC and Painting department are allowed multi workorder at cuncurrently
+          if (
+            department.DepartmentCode == 'CNC' ||
+            department.DepartmentCode == 'Painting'
+          ) {
+            const lmt = new BRI_LabourMultiTaskTsDetails();
+            lmt.CreatedBy = dto.userId;
+            lmt.CreatedOn = new Date(dt[0].currentDt);
+            lmt.IsActive = true;
+            lmt.LabourTsId = lts.TimeSheetLabourDetailsID;
+            lmt.ParrentLabourTsId = lts.TimeSheetLabourDetailsID;
+            lmt.NoOfTask = 1;
+            lmt.StartTime = new Date(dt[0].currentDt);
+            const fistEntry = await this.labourmMultiTaskTsRepository.save(lmt);
+
+            const multiTaskDetails = await this.labourTsRepository.query(
+              'select * from BRI_VIEW_LabourMultitaskTsDetails where TimeSheetLabourDetailsID not in(' +
+                lts.TimeSheetLabourDetailsID +
+                ') and LabourID=' +
+                emp,
+            );
+            // let i=1;
+            for await (const mtd of multiTaskDetails) {
+              // Previous non closed labous ts add to current ts
+              const lmts = new BRI_LabourMultiTaskTsDetails();
+              lmts.CreatedBy = dto.userId;
+              lmts.CreatedOn = new Date(dt[0].currentDt);
+              lmts.IsActive = true;
+              lmts.LabourTsId = mtd.TimeSheetLabourDetailsID;
+              lmts.ParrentLabourTsId = lts.TimeSheetLabourDetailsID;
+              // lmt.NoOfTask=1;
+              lmts.StartTime = new Date(mtd.StartTime);
+              await this.labourmMultiTaskTsRepository.save(lmts);
+
+              // Current labour ts data added to non closed previous ts.
+              const pvlmts = new BRI_LabourMultiTaskTsDetails();
+              pvlmts.CreatedBy = dto.userId;
+              pvlmts.CreatedOn = new Date(dt[0].currentDt);
+              pvlmts.IsActive = true;
+              pvlmts.LabourTsId = lts.TimeSheetLabourDetailsID;
+              pvlmts.ParrentLabourTsId = mtd.TimeSheetLabourDetailsID;
+              // lmt.NoOfTask=1;
+              pvlmts.StartTime = new Date(dt[0].currentDt);
+              await this.labourmMultiTaskTsRepository.save(pvlmts);
+            }
+          }
         }
       }
     } catch (e) {
@@ -1494,6 +1658,10 @@ export class TransactionService implements ITraansactionService {
     dto: woOperationHoldAndCompleteDto,
   ): Promise<any> {
     try {
+      const dt = await this.drpTaxnomyRepository.query(
+        'select getdate() currentDt',
+      );
+
       const wos = await this.drpTaxnomyRepository.find({
         where: { TaxnomyType: 'WorkOrderStatus', IsActive: true },
       });
@@ -1525,11 +1693,13 @@ export class TransactionService implements ITraansactionService {
             { WorkOrderStepID: dto.workorderStepId },
             {
               IsHold: true,
-              HoldOn: new Date(),
+              HoldOn: new Date(dt[0].currentDt),
               HoldRemarks: dto.holdRemark,
               ModifiedBy: dto.userId,
-              ModifiedOn: new Date(),
+              ModifiedOn: new Date(dt[0].currentDt),
               StatusId: wossHold.TaxnomyId,
+              HoldReasonId:dto.holdReasonId,
+            
             },
           );
           if (wsu.affected > 0) {
@@ -1546,77 +1716,453 @@ export class TransactionService implements ITraansactionService {
             if (wsshu.affected > 0) {
               wssh.HistoryId = null;
               wssh.CreatedBy = dto.userId;
-              wssh.CreatedOn = new Date();
+              wssh.CreatedOn = new Date(dt[0].currentDt);
               wssh.StatusId = wossHold.TaxnomyId;
               wssh.IsHold = true;
-              (wssh.HoldOn = new Date()), (wssh.HoldRemarks = dto.holdRemark);
+              wssh.HoldReasonId=dto.holdReasonId;
+              (wssh.HoldOn = new Date(dt[0].currentDt)),
+                (wssh.HoldRemarks = dto.holdRemark);
               wssh.IsLastRecord = true;
               await this.workorderStepsHistoryRepository.save(wssh);
             }
 
             for await (const i of dto.itemTimeSheet) {
               const its = new BRI_ItemTimeSheet();
-              its.CreatedAt = new Date();
+              its.CreatedAt = new Date(dt[0].currentDt);
               its.IsActive = true;
-              its.ItemID = i.itemId;
-              its.RequisitionID = i.mrId;
+              //  its.ItemID = i.itemId;
+              // its.RequisitionID = i.mrId;
               its.Quentity = i.usedQuantity;
+              its.ItemID = i.TimeSheetITemId;
               its.Remarks = i.remarks;
               its.TimeSheetID = tsData.TimeSheetID;
-              its.TimeSheetOn = new Date();
+              its.TimeSheetOn = new Date(dt[0].currentDt);
               const itSave = await this.tsItemRepository.save(its);
+              console.log(i.TimeSheetITemId, 'TimeSheetITemId');
+              // if (itSave) {
+              //   const woi = await this.workorderItemsRepository.findOne({
+              //     where: { WorkOrderItemId: i.workOrderItemId },
+              //   });
+              //   woi.UsedCount = woi.UsedCount + parseInt(i.usedQuantity, 10);
+              //   woi.AvailableCount = woi.AloatedCount - woi.UsedCount;
+              //   woi.ModifiedBy = dto.userId;
+              //   woi.ModifiedOn = new Date(dt[0].currentDt);
+              //   await this.workorderItemsRepository.save(woi);
+              // }
               if (itSave) {
-                const woi = await this.workorderItemsRepository.findOne({
-                  where: { WorkOrderItemId: i.workOrderItemId },
-                });
-                woi.UsedCount = woi.UsedCount + parseInt(i.usedQuantity, 10);
-                woi.AvailableCount = woi.AloatedCount - woi.UsedCount;
-                woi.ModifiedBy = dto.userId;
-                woi.ModifiedOn = new Date();
-                await this.workorderItemsRepository.save(woi);
+                const itemData =
+                  await this.timesheetItemMasterRepository.findOne({
+                    where: { TimeSheetITemId: i.TimeSheetITemId },
+                  });
+                console.log(
+                  itemData.AvailableQuantity - i.usedQuantity,
+                  '(itemData.AvailableQuantity - i.usedQuantity)',
+                );
+                const up = await this.timesheetItemMasterRepository.update(
+                  { TimeSheetITemId: i.TimeSheetITemId },
+                  {
+                    AvailableQuantity:
+                      itemData.AvailableQuantity - i.usedQuantity,
+                    ModifiedOn: new Date(dt[0].currentDt),
+                    ModifiedBy: dto.userId,
+                  },
+                );
+                console.log(up, ' update');
               }
             }
 
             const labourTs = await this.labourTsRepository.find({
               where: { TimeSheetID: tsData.TimeSheetID },
             });
-            for await (const ls of labourTs) {
-              const hr = ls.StartTime.getHours();
-              const mm = ls.StartTime.getMinutes();
-              const day = ls.StartTime.getDate();
-              const month = ls.StartTime.getMonth() + 1;
-              const year = ls.StartTime.getFullYear();
-              const st = year + '-' + month + '-' + day + ' ' + hr + ':' + mm;
-              const param =
-                'EXEC BRI_USP_Get_Timesheet_Intravel ' +
-                tsData.DepartmentID +
-                ',"' +
-                st +
-                '"';
-              console.log(param, 'sp params');
-              const data = await this.intravelRepository.query(param);
-              // Interval Tracking
-              for await (const ti of data) {
-                const tsIntTbl = new BRI_TimesheetIntravelTracking();
-                tsIntTbl.CreatedOn = new Date();
-                tsIntTbl.Duration = ti.Duration;
-                tsIntTbl.EndTime = ti.EndTime;
-                tsIntTbl.IntravelId = ti.IntravalId;
-                tsIntTbl.IsActive = true;
-                tsIntTbl.StartTime = ti.startTime;
-                tsIntTbl.TimeSheetID = tsData.TimeSheetID;
-                await this.tsIntravelRepository.save(tsIntTbl);
-              }
 
-              await this.labourTsRepository.update(
-                { TimeSheetLabourDetailsID: ls.TimeSheetLabourDetailsID },
-                {
-                  EndTime: data[0].workEnd,
-                  WorkHrsInMin: data[0].workMin,
-                  ModifiedOn: new Date(),
-                  ModifiedBy: dto.userId,
-                },
-              );
+            const department = await this.departmentRepository.findOne({
+              where: { DepartmentId: tsData.DepartmentID },
+            });
+            if (
+              department.DepartmentCode != 'CNC' &&
+              department.DepartmentCode != 'Painting'
+            ) {
+              for await (const ls of labourTs) {
+                const hr = ls.StartTime.getHours();
+                const mm = ls.StartTime.getMinutes();
+                const day = ls.StartTime.getDate();
+                const month = ls.StartTime.getMonth() + 1;
+                const year = ls.StartTime.getFullYear();
+                const st = year + '-' + month + '-' + day + ' ' + hr + ':' + mm;
+                const param =
+                  'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                  tsData.DepartmentID +
+                  ',"' +
+                  st +
+                  '"';
+                console.log(param, 'sp params');
+                const data = await this.intravelRepository.query(param);
+                // Interval Tracking
+                for await (const ti of data) {
+                  const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                  tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                  tsIntTbl.Duration = ti.Duration;
+                  tsIntTbl.EndTime = ti.EndTime;
+                  tsIntTbl.IntravelId = ti.IntravalId;
+                  tsIntTbl.IsActive = true;
+                  tsIntTbl.StartTime = ti.startTime;
+                  tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                  await this.tsIntravelRepository.save(tsIntTbl);
+                }
+
+                await this.labourTsRepository.update(
+                  { TimeSheetLabourDetailsID: ls.TimeSheetLabourDetailsID },
+                  {
+                    EndTime: data[0].workEnd,
+                    WorkHrsInMin: data[0].workMin,
+                    ModifiedOn: new Date(dt[0].currentDt),
+                    ModifiedBy: dto.userId,
+                  },
+                );
+              }
+            } else if (
+              department.DepartmentCode == 'CNC' ||
+              department.DepartmentCode == 'Painting'
+            ) {
+              console.log(labourTs, ' labour ts');
+
+              for await (const ls of labourTs) {
+                console.log(
+                  ls.TimeSheetLabourDetailsID,
+                  'TimeSheetLabourDetailsID',
+                );
+                const labourTsId = ls.TimeSheetLabourDetailsID;
+                const labourTsData = await this.intravelRepository.query(
+                  'exec BRI_USP_Multi_EmployeeTS_Calc ' + labourTsId,
+                );
+                // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                //   console.log(labourTsData,'labourTsData');
+                const requiredTsData = labourTsData.filter(
+                  (x) =>
+                    x.LabourTsId == labourTsId &&
+                    x.ParrentLabourTsId == labourTsId,
+                );
+                const previousTsData = labourTsData.filter(
+                  (x) =>
+                    x.ParrentLabourTsId == labourTsId && x.isPreviousStart == 1,
+                );
+                const afterTsData = labourTsData.filter(
+                  (x) =>
+                    (x.LabourTsId != labourTsId ||
+                      x.ParrentLabourTsId != labourTsId) &&
+                    x.isPreviousStart == 0,
+                );
+                const finalData = [];
+                let previousAvg = 0;
+                let index = 0;
+                console.log(requiredTsData, ' requiredTsData');
+                console.log(previousTsData, ' previousTsData');
+                console.log(afterTsData, ' afterTsData');
+                if (requiredTsData.length > 0) {
+                  if (afterTsData.length > 0) {
+                    for await (const data of afterTsData) {
+                      const avg =
+                        (data.endTimeDifference - previousAvg) /
+                        labourTsData.length;
+
+                      const param =
+                        'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                        tsData.DepartmentID +
+                        ',"' +
+                        data.StartTime +
+                        '"';
+
+                      const dataIn = await this.intravelRepository.query(param);
+
+                      // const removeInterval=(avg-dataIn[0].intravelSum);
+
+                      console.log(
+                        '(data.endTimeDifference-previousAvg)/(labourTsData.length) (',
+                        data.endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')/(',
+                        labourTsData.length,
+                        ')=',
+                        avg,
+                      );
+                      data.averageMins = avg - dataIn[0].intravelSum;
+                      previousAvg = previousAvg + avg;
+                      finalData.push(data);
+                      index = index + 1;
+                      if (afterTsData.length === index) {
+                        console.log(requiredTsData[0], 'requiredTsData[0]');
+                        if (previousTsData.length > 0) {
+                          requiredTsData[0].averageMins =
+                            (requiredTsData[0].endTimeDifference -
+                              previousAvg) /
+                            (previousTsData.length + 1);
+                          console.log(
+                            '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                            requiredTsData[0].endTimeDifference,
+                            '-',
+                            previousAvg,
+                            ')/(',
+                            previousTsData.length + 1,
+                            ')=',
+                            requiredTsData[0].averageMins,
+                          );
+                        } else {
+                          requiredTsData[0].averageMins =
+                            requiredTsData[0].endTimeDifference - previousAvg;
+                          console.log(
+                            '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                            requiredTsData[0].endTimeDifference,
+                            '-',
+                            previousAvg,
+                            ')= requiredTsData[0].averageMins',
+                          );
+                        }
+
+                        // Interval Calculation
+
+                        const param =
+                          'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                          tsData.DepartmentID +
+                          ',"' +
+                          requiredTsData[0].StartTime +
+                          '"';
+
+                        const dataIn1 =
+                          await this.intravelRepository.query(param);
+
+                        requiredTsData[0].averageMins =
+                          requiredTsData[0].averageMins -
+                          dataIn1[0].intravelSum;
+
+                        for await (const ti of dataIn1) {
+                          const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                          tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                          tsIntTbl.Duration = ti.Duration;
+                          tsIntTbl.EndTime = ti.EndTime;
+                          tsIntTbl.IntravelId = ti.IntravalId;
+                          tsIntTbl.IsActive = true;
+                          tsIntTbl.StartTime = ti.startTime;
+                          tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                          await this.tsIntravelRepository.save(tsIntTbl);
+                        }
+
+                        await this.labourTsRepository.update(
+                          {
+                            TimeSheetLabourDetailsID:
+                              requiredTsData[0].LabourTsId,
+                          },
+                          {
+                            EndTime: dataIn1[0].workEnd,
+                            WorkHrsInMin: requiredTsData[0].averageMins,
+                            ModifiedOn: new Date(dt[0].currentDt),
+                            ModifiedBy: dto.userId,
+                          },
+                        );
+
+                        // -------------------------
+
+                        finalData.push(requiredTsData[0]);
+                        for await (const prevData of previousTsData) {
+                          const param =
+                            'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                            tsData.DepartmentID +
+                            ',"' +
+                            prevData.StartTime +
+                            '"';
+
+                          const dataIn2 =
+                            await this.intravelRepository.query(param);
+
+                          prevData.averageMins =
+                            requiredTsData[0].averageMins +
+                            prevData.startTimeDifference -
+                            dataIn2[0].intravelSum;
+                          console.log(
+                            ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                            requiredTsData[0].averageMins,
+                            '+',
+                            prevData.startTimeDifference,
+                            '=',
+                            prevData.averageMins,
+                          );
+                          finalData.push(prevData);
+                        }
+                      }
+                    }
+                  } else if (previousTsData.length > 0) {
+                    console.log(requiredTsData[0], 'requiredTsData[0]');
+                    if (previousTsData.length > 0) {
+                      requiredTsData[0].averageMins =
+                        (requiredTsData[0].endTimeDifference - previousAvg) /
+                        (previousTsData.length + 1);
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')/(',
+                        previousTsData.length + 1,
+                        ')=',
+                        requiredTsData[0].averageMins,
+                      );
+                    } else {
+                      requiredTsData[0].averageMins =
+                        requiredTsData[0].endTimeDifference - previousAvg;
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')= requiredTsData[0].averageMins',
+                      );
+                    }
+
+                    // Interval Calculation
+
+                    const param =
+                      'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                      tsData.DepartmentID +
+                      ',"' +
+                      requiredTsData[0].StartTime +
+                      '"';
+
+                    const dataIn1 = await this.intravelRepository.query(param);
+
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].averageMins - dataIn1[0].intravelSum;
+
+                    for await (const ti of dataIn1) {
+                      const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                      tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                      tsIntTbl.Duration = ti.Duration;
+                      tsIntTbl.EndTime = ti.EndTime;
+                      tsIntTbl.IntravelId = ti.IntravalId;
+                      tsIntTbl.IsActive = true;
+                      tsIntTbl.StartTime = ti.startTime;
+                      tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                      await this.tsIntravelRepository.save(tsIntTbl);
+                    }
+
+                    await this.labourTsRepository.update(
+                      {
+                        TimeSheetLabourDetailsID: requiredTsData[0].LabourTsId,
+                      },
+                      {
+                        EndTime: dataIn1[0].workEnd,
+                        WorkHrsInMin: requiredTsData[0].averageMins,
+                        ModifiedOn: new Date(dt[0].currentDt),
+                        ModifiedBy: dto.userId,
+                      },
+                    );
+
+                    // -------------------------
+
+                    finalData.push(requiredTsData[0]);
+                    for await (const prevData of previousTsData) {
+                      const param =
+                        'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                        tsData.DepartmentID +
+                        ',"' +
+                        prevData.StartTime +
+                        '"';
+
+                      const dataIn2 =
+                        await this.intravelRepository.query(param);
+
+                      prevData.averageMins =
+                        requiredTsData[0].averageMins +
+                        prevData.startTimeDifference -
+                        dataIn2[0].intravelSum;
+                      console.log(
+                        ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                        requiredTsData[0].averageMins,
+                        '+',
+                        prevData.startTimeDifference,
+                        '=',
+                        prevData.averageMins,
+                      );
+                      finalData.push(prevData);
+                    }
+                  } else {
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].endTimeDifference - previousAvg;
+                    console.log(
+                      '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                      requiredTsData[0].endTimeDifference,
+                      '-',
+                      previousAvg,
+                      ')= requiredTsData[0].averageMins',
+                    );
+
+                    const param =
+                      'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                      tsData.DepartmentID +
+                      ',"' +
+                      requiredTsData[0].StartTime +
+                      '"';
+
+                    const dataIn1 = await this.intravelRepository.query(param);
+
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].averageMins - dataIn1[0].intravelSum;
+
+                    for await (const ti of dataIn1) {
+                      const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                      tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                      tsIntTbl.Duration = ti.Duration;
+                      tsIntTbl.EndTime = ti.EndTime;
+                      tsIntTbl.IntravelId = ti.IntravalId;
+                      tsIntTbl.IsActive = true;
+                      tsIntTbl.StartTime = ti.startTime;
+                      tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                      await this.tsIntravelRepository.save(tsIntTbl);
+                    }
+
+                    await this.labourTsRepository.update(
+                      {
+                        TimeSheetLabourDetailsID: requiredTsData[0].LabourTsId,
+                      },
+                      {
+                        EndTime: dataIn1[0].workEnd,
+                        WorkHrsInMin: requiredTsData[0].averageMins,
+                        ModifiedOn: new Date(dt[0].currentDt),
+                        ModifiedBy: dto.userId,
+                      },
+                    );
+
+                    // -------------------------
+
+                    finalData.push(requiredTsData[0]);
+                  }
+
+                  for await (const fd of finalData) {
+                    await this.labourmMultiTaskTsRepository.update(
+                      {
+                        ParrentLabourTsId: fd.ParrentLabourTsId,
+                        LabourTsId: fd.LabourTsId,
+                      },
+                      {
+                        EndTime: new Date(dt[0].currentDt),
+                        ConsolidatedDuration: fd.averageMins,
+                        IsCompleted: true,
+                      },
+                    );
+                    await this.labourmMultiTaskTsRepository.update(
+                      {
+                        ParrentLabourTsId: fd.LabourTsId,
+                        LabourTsId: fd.ParrentLabourTsId,
+                      },
+                      {
+                        EndTime: new Date(dt[0].currentDt),
+                        ConsolidatedDuration: fd.averageMins,
+                        IsCompleted: true,
+                      },
+                    );
+                  }
+                }
+                // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+              }
             }
 
             await this.timeSheetRepository.update(
@@ -1629,9 +2175,9 @@ export class TransactionService implements ITraansactionService {
             { WorkOrderStepID: dto.workorderStepId },
             {
               ModifiedBy: dto.userId,
-              ModifiedOn: new Date(),
+              ModifiedOn: new Date(dt[0].currentDt),
               StatusId: wossCompleted.TaxnomyId,
-              ActualEndDate: new Date(),
+              ActualEndDate: new Date(dt[0].currentDt),
             },
           );
           if (wsu.affected > 0) {
@@ -1649,7 +2195,7 @@ export class TransactionService implements ITraansactionService {
             if (wsshu.affected > 0) {
               wssh.HistoryId = null;
               wssh.CreatedBy = dto.userId;
-              wssh.CreatedOn = new Date();
+              wssh.CreatedOn = new Date(dt[0].currentDt);
               wssh.StatusId = wossCompleted.TaxnomyId;
               wssh.IsLastRecord = true;
               await this.workorderStepsHistoryRepository.save(wssh);
@@ -1657,69 +2203,441 @@ export class TransactionService implements ITraansactionService {
             //  const tsData= await this.timeSheetRepository.findOne({where:{WorkOrderID:dto.workorderId,WorkOrderStepID:dto.workorderStepId,IsClosed:false}})
             for await (const i of dto.itemTimeSheet) {
               const its = new BRI_ItemTimeSheet();
-              its.CreatedAt = new Date();
+              its.CreatedAt = new Date(dt[0].currentDt);
               its.IsActive = true;
-              its.ItemID = i.itemId;
-              its.RequisitionID = i.mrId;
+              //  its.ItemID = i.itemId;
+              // its.RequisitionID = i.mrId;
               its.Quentity = i.usedQuantity;
+              its.ItemID = i.TimeSheetITemId;
               its.Remarks = i.remarks;
               its.TimeSheetID = tsData.TimeSheetID;
-              its.TimeSheetOn = new Date();
+              its.TimeSheetOn = new Date(dt[0].currentDt);
               const itSave = await this.tsItemRepository.save(its);
+              console.log(i.TimeSheetITemId, 'TimeSheetITemId');
+              // if (itSave) {
+              //   const woi = await this.workorderItemsRepository.findOne({
+              //     where: { WorkOrderItemId: i.workOrderItemId },
+              //   });
+              //   woi.UsedCount = woi.UsedCount + parseInt(i.usedQuantity, 10);
+              //   woi.AvailableCount = woi.AloatedCount - woi.UsedCount;
+              //   woi.ModifiedBy = dto.userId;
+              //   woi.ModifiedOn = new Date(dt[0].currentDt);
+              //   await this.workorderItemsRepository.save(woi);
+              // }
               if (itSave) {
-                const woi = await this.workorderItemsRepository.findOne({
-                  where: { WorkOrderItemId: i.workOrderItemId },
-                });
-                woi.UsedCount = woi.UsedCount + i.usedQuantity;
-                woi.AvailableCount = woi.AloatedCount - woi.UsedCount;
-                woi.ModifiedBy = dto.userId;
-                woi.ModifiedOn = new Date();
-                await this.workorderItemsRepository.save(woi);
+                const itemData =
+                  await this.timesheetItemMasterRepository.findOne({
+                    where: { TimeSheetITemId: i.TimeSheetITemId },
+                  });
+                console.log(
+                  itemData.AvailableQuantity - i.usedQuantity,
+                  '(itemData.AvailableQuantity - i.usedQuantity)',
+                );
+                const up = await this.timesheetItemMasterRepository.update(
+                  { TimeSheetITemId: i.TimeSheetITemId },
+                  {
+                    AvailableQuantity:
+                      itemData.AvailableQuantity - i.usedQuantity,
+                    ModifiedOn: new Date(dt[0].currentDt),
+                    ModifiedBy: dto.userId,
+                  },
+                );
+                console.log(up, ' update');
               }
             }
 
             const labourTs = await this.labourTsRepository.find({
               where: { TimeSheetID: tsData.TimeSheetID },
             });
-            for await (const ls of labourTs) {
-              const hr = ls.StartTime.getHours();
-              const mm = ls.StartTime.getMinutes();
-              const day = ls.StartTime.getDate();
-              const month = ls.StartTime.getMonth() + 1;
-              const year = ls.StartTime.getFullYear();
-              const st = year + '-' + month + '-' + day + ' ' + hr + ':' + mm;
-              const param =
-                'EXEC BRI_USP_Get_Timesheet_Intravel ' +
-                tsData.DepartmentID +
-                ',"' +
-                st +
-                '"';
-              console.log(param, 'sp params');
-              const data = await this.intravelRepository.query(param);
-              // Interval Tracking
-              for await (const ti of data) {
-                const tsIntTbl = new BRI_TimesheetIntravelTracking();
-                tsIntTbl.CreatedOn = new Date();
-                tsIntTbl.Duration = ti.Duration;
-                tsIntTbl.EndTime = ti.EndTime;
-                tsIntTbl.IntravelId = ti.IntravalId;
-                tsIntTbl.IsActive = true;
-                tsIntTbl.StartTime = ti.startTime;
-                tsIntTbl.TimeSheetID = tsData.TimeSheetID;
-                await this.tsIntravelRepository.save(tsIntTbl);
+            const department = await this.departmentRepository.findOne({
+              where: { DepartmentId: tsData.DepartmentID },
+            });
+            if (
+              department.DepartmentCode != 'CNC' &&
+              department.DepartmentCode != 'Painting'
+            ) {
+              for await (const ls of labourTs) {
+                const hr = ls.StartTime.getHours();
+                const mm = ls.StartTime.getMinutes();
+                const day = ls.StartTime.getDate();
+                const month = ls.StartTime.getMonth() + 1;
+                const year = ls.StartTime.getFullYear();
+                const st = year + '-' + month + '-' + day + ' ' + hr + ':' + mm;
+                const param =
+                  'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                  tsData.DepartmentID +
+                  ',"' +
+                  st +
+                  '"';
+                console.log(param, 'sp params');
+                const data = await this.intravelRepository.query(param);
+                // Interval Tracking
+                for await (const ti of data) {
+                  const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                  tsIntTbl.CreatedOn = new Date();
+                  tsIntTbl.Duration = ti.Duration;
+                  tsIntTbl.EndTime = ti.EndTime;
+                  tsIntTbl.IntravelId = ti.IntravalId;
+                  tsIntTbl.IsActive = true;
+                  tsIntTbl.StartTime = ti.startTime;
+                  tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                  await this.tsIntravelRepository.save(tsIntTbl);
+                }
+
+                await this.labourTsRepository.update(
+                  { TimeSheetLabourDetailsID: ls.TimeSheetLabourDetailsID },
+                  {
+                    EndTime: data[0].workEnd,
+                    WorkHrsInMin: data[0].workMin,
+                    ModifiedOn: new Date(dt[0].currentDt),
+                    ModifiedBy: dto.userId,
+                  },
+                );
               }
+            } else if (
+              department.DepartmentCode == 'CNC' ||
+              department.DepartmentCode == 'Painting'
+            ) {
+              console.log(labourTs, ' labour ts');
 
-              await this.labourTsRepository.update(
-                { TimeSheetLabourDetailsID: ls.TimeSheetLabourDetailsID },
-                {
-                  EndTime: data[0].workEnd,
-                  WorkHrsInMin: data[0].workMin,
-                  ModifiedOn: new Date(),
-                  ModifiedBy: dto.userId,
-                },
-              );
+              for await (const ls of labourTs) {
+                console.log(
+                  ls.TimeSheetLabourDetailsID,
+                  'TimeSheetLabourDetailsID',
+                );
+                const labourTsId = ls.TimeSheetLabourDetailsID;
+                const labourTsData = await this.intravelRepository.query(
+                  'exec BRI_USP_Multi_EmployeeTS_Calc ' + labourTsId,
+                );
+                // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                //   console.log(labourTsData,'labourTsData');
+                const requiredTsData = labourTsData.filter(
+                  (x) =>
+                    x.LabourTsId == labourTsId &&
+                    x.ParrentLabourTsId == labourTsId,
+                );
+                const previousTsData = labourTsData.filter(
+                  (x) =>
+                    x.ParrentLabourTsId == labourTsId && x.isPreviousStart == 1,
+                );
+                const afterTsData = labourTsData.filter(
+                  (x) =>
+                    (x.LabourTsId != labourTsId ||
+                      x.ParrentLabourTsId != labourTsId) &&
+                    x.isPreviousStart == 0,
+                );
+                const finalData = [];
+                let previousAvg = 0;
+                let index = 0;
+                console.log(requiredTsData, ' requiredTsData');
+                console.log(previousTsData, ' previousTsData');
+                console.log(afterTsData, ' afterTsData');
+                if (requiredTsData.length > 0) {
+                  if (afterTsData.length > 0) {
+                    for await (const data of afterTsData) {
+                      const avg =
+                        (data.endTimeDifference - previousAvg) /
+                        labourTsData.length;
+
+                      const param =
+                        'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                        tsData.DepartmentID +
+                        ',"' +
+                        data.StartTime +
+                        '"';
+
+                      const dataIn = await this.intravelRepository.query(param);
+
+                      // const removeInterval=(avg-dataIn[0].intravelSum);
+
+                      console.log(
+                        '(data.endTimeDifference-previousAvg)/(labourTsData.length) (',
+                        data.endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')/(',
+                        labourTsData.length,
+                        ')=',
+                        avg,
+                      );
+                      data.averageMins = avg - dataIn[0].intravelSum;
+                      previousAvg = previousAvg + avg;
+                      finalData.push(data);
+                      index = index + 1;
+                      if (afterTsData.length === index) {
+                        console.log(requiredTsData[0], 'requiredTsData[0]');
+                        if (previousTsData.length > 0) {
+                          requiredTsData[0].averageMins =
+                            (requiredTsData[0].endTimeDifference -
+                              previousAvg) /
+                            (previousTsData.length + 1);
+                          console.log(
+                            '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                            requiredTsData[0].endTimeDifference,
+                            '-',
+                            previousAvg,
+                            ')/(',
+                            previousTsData.length + 1,
+                            ')=',
+                            requiredTsData[0].averageMins,
+                          );
+                        } else {
+                          requiredTsData[0].averageMins =
+                            requiredTsData[0].endTimeDifference - previousAvg;
+                          console.log(
+                            '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                            requiredTsData[0].endTimeDifference,
+                            '-',
+                            previousAvg,
+                            ')= requiredTsData[0].averageMins',
+                          );
+                        }
+
+                        // Interval Calculation
+
+                        const param =
+                          'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                          tsData.DepartmentID +
+                          ',"' +
+                          requiredTsData[0].StartTime +
+                          '"';
+
+                        const dataIn1 =
+                          await this.intravelRepository.query(param);
+
+                        requiredTsData[0].averageMins =
+                          requiredTsData[0].averageMins -
+                          dataIn1[0].intravelSum;
+
+                        for await (const ti of dataIn1) {
+                          const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                          tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                          tsIntTbl.Duration = ti.Duration;
+                          tsIntTbl.EndTime = ti.EndTime;
+                          tsIntTbl.IntravelId = ti.IntravalId;
+                          tsIntTbl.IsActive = true;
+                          tsIntTbl.StartTime = ti.startTime;
+                          tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                          await this.tsIntravelRepository.save(tsIntTbl);
+                        }
+
+                        await this.labourTsRepository.update(
+                          {
+                            TimeSheetLabourDetailsID:
+                              requiredTsData[0].LabourTsId,
+                          },
+                          {
+                            EndTime: dataIn1[0].workEnd,
+                            WorkHrsInMin: requiredTsData[0].averageMins,
+                            ModifiedOn: new Date(dt[0].currentDt),
+                            ModifiedBy: dto.userId,
+                          },
+                        );
+
+                        // -------------------------
+
+                        finalData.push(requiredTsData[0]);
+                        for await (const prevData of previousTsData) {
+                          const param =
+                            'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                            tsData.DepartmentID +
+                            ',"' +
+                            prevData.StartTime +
+                            '"';
+
+                          const dataIn2 =
+                            await this.intravelRepository.query(param);
+
+                          prevData.averageMins =
+                            requiredTsData[0].averageMins +
+                            prevData.startTimeDifference -
+                            dataIn2[0].intravelSum;
+                          console.log(
+                            ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                            requiredTsData[0].averageMins,
+                            '+',
+                            prevData.startTimeDifference,
+                            '=',
+                            prevData.averageMins,
+                          );
+                          finalData.push(prevData);
+                        }
+                      }
+                    }
+                  } else if (previousTsData.length > 0) {
+                    console.log(requiredTsData[0], 'requiredTsData[0]');
+                    if (previousTsData.length > 0) {
+                      requiredTsData[0].averageMins =
+                        (requiredTsData[0].endTimeDifference - previousAvg) /
+                        (previousTsData.length + 1);
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')/(',
+                        previousTsData.length + 1,
+                        ')=',
+                        requiredTsData[0].averageMins,
+                      );
+                    } else {
+                      requiredTsData[0].averageMins =
+                        requiredTsData[0].endTimeDifference - previousAvg;
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')= requiredTsData[0].averageMins',
+                      );
+                    }
+
+                    // Interval Calculation
+
+                    const param =
+                      'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                      tsData.DepartmentID +
+                      ',"' +
+                      requiredTsData[0].StartTime +
+                      '"';
+
+                    const dataIn1 = await this.intravelRepository.query(param);
+
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].averageMins - dataIn1[0].intravelSum;
+
+                    for await (const ti of dataIn1) {
+                      const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                      tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                      tsIntTbl.Duration = ti.Duration;
+                      tsIntTbl.EndTime = ti.EndTime;
+                      tsIntTbl.IntravelId = ti.IntravalId;
+                      tsIntTbl.IsActive = true;
+                      tsIntTbl.StartTime = ti.startTime;
+                      tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                      await this.tsIntravelRepository.save(tsIntTbl);
+                    }
+
+                    await this.labourTsRepository.update(
+                      {
+                        TimeSheetLabourDetailsID: requiredTsData[0].LabourTsId,
+                      },
+                      {
+                        EndTime: dataIn1[0].workEnd,
+                        WorkHrsInMin: requiredTsData[0].averageMins,
+                        ModifiedOn: new Date(dt[0].currentDt),
+                        ModifiedBy: dto.userId,
+                      },
+                    );
+
+                    // -------------------------
+
+                    finalData.push(requiredTsData[0]);
+                    for await (const prevData of previousTsData) {
+                      const param =
+                        'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                        tsData.DepartmentID +
+                        ',"' +
+                        prevData.StartTime +
+                        '"';
+
+                      const dataIn2 =
+                        await this.intravelRepository.query(param);
+
+                      prevData.averageMins =
+                        requiredTsData[0].averageMins +
+                        prevData.startTimeDifference -
+                        dataIn2[0].intravelSum;
+                      console.log(
+                        ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                        requiredTsData[0].averageMins,
+                        '+',
+                        prevData.startTimeDifference,
+                        '=',
+                        prevData.averageMins,
+                      );
+                      finalData.push(prevData);
+                    }
+                  } else {
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].endTimeDifference - previousAvg;
+                    console.log(
+                      '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                      requiredTsData[0].endTimeDifference,
+                      '-',
+                      previousAvg,
+                      ')= requiredTsData[0].averageMins',
+                    );
+
+                    const param =
+                      'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                      tsData.DepartmentID +
+                      ',"' +
+                      requiredTsData[0].StartTime +
+                      '"';
+
+                    const dataIn1 = await this.intravelRepository.query(param);
+
+                    requiredTsData[0].averageMins =
+                      requiredTsData[0].averageMins - dataIn1[0].intravelSum;
+
+                    for await (const ti of dataIn1) {
+                      const tsIntTbl = new BRI_TimesheetIntravelTracking();
+                      tsIntTbl.CreatedOn = new Date(dt[0].currentDt);
+                      tsIntTbl.Duration = ti.Duration;
+                      tsIntTbl.EndTime = ti.EndTime;
+                      tsIntTbl.IntravelId = ti.IntravalId;
+                      tsIntTbl.IsActive = true;
+                      tsIntTbl.StartTime = ti.startTime;
+                      tsIntTbl.TimeSheetID = tsData.TimeSheetID;
+                      await this.tsIntravelRepository.save(tsIntTbl);
+                    }
+
+                    await this.labourTsRepository.update(
+                      {
+                        TimeSheetLabourDetailsID: requiredTsData[0].LabourTsId,
+                      },
+                      {
+                        EndTime: dataIn1[0].workEnd,
+                        WorkHrsInMin: requiredTsData[0].averageMins,
+                        ModifiedOn: new Date(dt[0].currentDt),
+                        ModifiedBy: dto.userId,
+                      },
+                    );
+
+                    // -------------------------
+
+                    finalData.push(requiredTsData[0]);
+                  }
+
+                  for await (const fd of finalData) {
+                    await this.labourmMultiTaskTsRepository.update(
+                      {
+                        ParrentLabourTsId: fd.ParrentLabourTsId,
+                        LabourTsId: fd.LabourTsId,
+                      },
+                      {
+                        EndTime: new Date(dt[0].currentDt),
+                        ConsolidatedDuration: fd.averageMins,
+                        IsCompleted: true,
+                      },
+                    );
+                    await this.labourmMultiTaskTsRepository.update(
+                      {
+                        ParrentLabourTsId: fd.LabourTsId,
+                        LabourTsId: fd.ParrentLabourTsId,
+                      },
+                      {
+                        EndTime: new Date(dt[0].currentDt),
+                        ConsolidatedDuration: fd.averageMins,
+                        IsCompleted: true,
+                      },
+                    );
+                  }
+                }
+                // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+              }
             }
-
             await this.timeSheetRepository.update(
               { TimeSheetID: tsData.TimeSheetID },
               { IsClosed: true },
@@ -1730,12 +2648,12 @@ export class TransactionService implements ITraansactionService {
         for await (const scrap of dto.scrapTimeSheet) {
           const scrapTbl = new BRI_ScrapItemTimesheet();
           scrapTbl.CreatedBy = dto.userId;
-          scrapTbl.CreatedOn = new Date();
+          scrapTbl.CreatedOn = new Date(dt[0].currentDt);
           scrapTbl.DepartmentId = dto.departmentId;
           scrapTbl.IsActive = true;
           scrapTbl.TimesheetId = tsData.TimeSheetID;
           scrapTbl.WorkorderStepId = tsData.WorkOrderStepID;
-          scrapTbl.ScrapItemId = scrap.scrapItemId;
+          scrapTbl.ScrapItem = scrap.scrapItem;
           scrapTbl.Quantity = scrap.quantity;
           await this.scrapItemTimesheetRepository.save(scrapTbl);
         }
@@ -1743,7 +2661,7 @@ export class TransactionService implements ITraansactionService {
         for await (const machine of dto.machineTimeSheet) {
           const machineTbl = new BRI_MachineTimesheet();
           machineTbl.CreatedBy = dto.userId;
-          machineTbl.CreatedOn = new Date();
+          machineTbl.CreatedOn = new Date(dt[0].currentDt);
           machineTbl.DepartmentId = dto.departmentId;
           machineTbl.Duration = machine.duration;
           machineTbl.IsActive = true;
@@ -1778,12 +2696,14 @@ export class TransactionService implements ITraansactionService {
               { IsLastRecord: false },
             );
             wh.created_by = dto.userId;
-            wh.created_on = new Date();
+            wh.created_on = new Date(dt[0].currentDt);
             wh.StatusID = woCompleted.TaxnomyId;
             wh.IsLastRecord = true;
             wh.HistoryID = null;
             await this.workorderMasterHistoryRepository.save(wh);
           }
+
+          await this.workorderCompletionMailTrigger(dto.workorderId);
         }
       }
       return 'Successfully saved.';
@@ -1819,27 +2739,246 @@ export class TransactionService implements ITraansactionService {
       console.log(param, 'sp params');
       const data = await this.timeSheetRepository.query(param);
       console.log(data, 'data');
-      const result = [];
-      for (const d of data) {
-        const param =
-          'EXEC BRI_USP_Get_Timesheet_Intravel ' +
-          d.DepartmentID +
-          ',"' +
-          d.StartTime +
-          '"';
-        console.log(param, 'param 1405');
-        const dataIn = await this.intravelRepository.query(param);
-        console.log(dataIn, 'dataIn');
-        const obj = {
-          employeeId: d.EmployeeId,
-          employeeCode: d.EmployeeCode,
-          employeeName: d.EmployeeName,
-          workHrs: dataIn[0].workHr,
-          workMin: dataIn[0].workMin,
-        };
-        result.push(obj);
+      if (data.length > 0) {
+        const department = await this.departmentRepository.findOne({
+          where: { DepartmentId: data[0].DepartmentID },
+        });
+        if (
+          department.DepartmentCode != 'CNC' &&
+          department.DepartmentCode != 'Painting'
+        ) {
+          const result = [];
+          for (const d of data) {
+            const param =
+              'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+              d.DepartmentID +
+              ',"' +
+              d.StartTime +
+              '"';
+            console.log(param, 'param 1405');
+            const dataIn = await this.intravelRepository.query(param);
+            console.log(dataIn, 'dataIn');
+            const obj = {
+              employeeId: d.EmployeeId,
+              employeeCode: d.EmployeeCode,
+              employeeName: d.EmployeeName,
+              workHrs: dataIn[0].workHr,
+              workMin: dataIn[0].workMin,
+            };
+            result.push(obj);
+          }
+          return result;
+        } else if (
+          department.DepartmentCode == 'CNC' ||
+          department.DepartmentCode == 'Painting'
+        ) {
+          const result = [];
+          for (const d of data) {
+            const labourTsId = d.TimeSheetLabourDetailsID;
+            const labourTsData = await this.intravelRepository.query(
+              'exec BRI_USP_Multi_EmployeeTS_Calc ' + labourTsId,
+            );
+
+            const requiredTsData = labourTsData.filter(
+              (x) =>
+                x.LabourTsId === labourTsId &&
+                x.ParrentLabourTsId === labourTsId,
+            );
+            const previousTsData = labourTsData.filter(
+              (x) =>
+                x.ParrentLabourTsId === labourTsId && x.isPreviousStart === 1,
+            );
+            const afterTsData = labourTsData.filter(
+              (x) =>
+                (x.LabourTsId != labourTsId ||
+                  x.ParrentLabourTsId != labourTsId) &&
+                x.isPreviousStart === 0,
+            );
+            const finalData = [];
+            let previousAvg = 0;
+            let index = 0;
+            if (requiredTsData.length > 0) {
+              if (afterTsData.length > 0) {
+                for await (const data of afterTsData) {
+                  const avg =
+                    (data.endTimeDifference - previousAvg) /
+                    labourTsData.length;
+                  console.log(
+                    '(data.endTimeDifference-previousAvg)/(labourTsData.length) (',
+                    data.endTimeDifference,
+                    '-',
+                    previousAvg,
+                    ')/(',
+                    labourTsData.length,
+                    ')=',
+                    avg,
+                  );
+                  data.averageMins = avg;
+                  previousAvg = previousAvg + avg;
+                  finalData.push(data);
+                  index = index + 1;
+                  if (afterTsData.length === index) {
+                    if (previousTsData.length > 0) {
+                      requiredTsData[0].averageMins =
+                        (requiredTsData[0].endTimeDifference - previousAvg) /
+                        (previousTsData.length + 1);
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')/(',
+                        previousTsData.length + 1,
+                        ')=',
+                        requiredTsData[0].averageMins,
+                      );
+                    } else {
+                      requiredTsData[0].averageMins =
+                        requiredTsData[0].endTimeDifference - previousAvg;
+                      console.log(
+                        '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                        requiredTsData[0].endTimeDifference,
+                        '-',
+                        previousAvg,
+                        ')= requiredTsData[0].averageMins',
+                      );
+                    }
+
+                    // Interval Calculation
+
+                    const param =
+                      'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                      d.DepartmentID +
+                      ',"' +
+                      requiredTsData[0].StartTime +
+                      '"';
+                    console.log(param, 'param 1405');
+                    const dataIn = await this.intravelRepository.query(param);
+                    console.log(dataIn, 'dataIn');
+                    const removeInterval =
+                      requiredTsData[0].averageMins - dataIn[0].intravelSum;
+                    const hours = Math.floor(removeInterval / 60);
+                    const minutes = Math.floor(removeInterval % 60);
+                    const obj = {
+                      employeeId: d.EmployeeId,
+                      employeeCode: d.EmployeeCode,
+                      employeeName: d.EmployeeName,
+                      workHrs: hours + ':' + minutes,
+                      workMin: removeInterval,
+                    };
+                    result.push(obj);
+
+                    // -------------------------
+
+                    finalData.push(requiredTsData[0]);
+                    for await (const prevData of previousTsData) {
+                      prevData.averageMins =
+                        requiredTsData[0].averageMins +
+                        prevData.startTimeDifference;
+                      console.log(
+                        ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                        requiredTsData[0].averageMins,
+                        '+',
+                        prevData.startTimeDifference,
+                        '=',
+                        prevData.averageMins,
+                      );
+                      finalData.push(prevData);
+                    }
+                  }
+                }
+              } else if (previousTsData.length > 0) {
+                requiredTsData[0].averageMins =
+                  (requiredTsData[0].endTimeDifference - previousAvg) /
+                  (previousTsData.length + 1);
+                console.log(
+                  '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+                  requiredTsData[0].endTimeDifference,
+                  '-',
+                  previousAvg,
+                  ')/(',
+                  previousTsData.length + 1,
+                  ')=',
+                  requiredTsData[0].averageMins,
+                );
+                const param =
+                  'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                  d.DepartmentID +
+                  ',"' +
+                  requiredTsData[0].StartTime +
+                  '"';
+                console.log(param, 'param 1405');
+                const dataIn = await this.intravelRepository.query(param);
+                console.log(dataIn, 'dataIn');
+                const removeInterval =
+                  requiredTsData[0].averageMins - dataIn[0].intravelSum;
+                const hours = Math.floor(removeInterval / 60);
+                const minutes = Math.floor(removeInterval % 60);
+                const obj = {
+                  employeeId: d.EmployeeId,
+                  employeeCode: d.EmployeeCode,
+                  employeeName: d.EmployeeName,
+                  workHrs: hours + ':' + minutes,
+                  workMin: removeInterval,
+                };
+                result.push(obj);
+
+                // -------------------------
+
+                finalData.push(requiredTsData[0]);
+                for await (const prevData of previousTsData) {
+                  prevData.averageMins =
+                    requiredTsData[0].averageMins +
+                    prevData.startTimeDifference;
+                  console.log(
+                    ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+                    requiredTsData[0].averageMins,
+                    '+',
+                    prevData.startTimeDifference,
+                    '=',
+                    prevData.averageMins,
+                  );
+                  finalData.push(prevData);
+                }
+              } else {
+                requiredTsData[0].averageMins =
+                  requiredTsData[0].endTimeDifference - previousAvg;
+                console.log(
+                  '(requiredTsData[0].endTimeDifference-previousAvg) (',
+                  requiredTsData[0].endTimeDifference,
+                  '-',
+                  previousAvg,
+                  ')= requiredTsData[0].averageMins',
+                );
+                const param =
+                  'EXEC BRI_USP_Get_Timesheet_Intravel ' +
+                  d.DepartmentID +
+                  ',"' +
+                  requiredTsData[0].StartTime +
+                  '"';
+                console.log(param, 'param 1405');
+                const dataIn = await this.intravelRepository.query(param);
+                console.log(dataIn, 'dataIn');
+                const removeInterval =
+                  requiredTsData[0].averageMins - dataIn[0].intravelSum;
+                const hours = Math.floor(removeInterval / 60);
+                const minutes = Math.floor(removeInterval % 60);
+                const obj = {
+                  employeeId: d.EmployeeId,
+                  employeeCode: d.EmployeeCode,
+                  employeeName: d.EmployeeName,
+                  workHrs: hours + ':' + minutes,
+                  workMin: removeInterval,
+                };
+                result.push(obj);
+              }
+            }
+          }
+          return result;
+        }
+      } else {
+        return [];
       }
-      return result;
     } catch (e) {
       console.log(e);
       throw new HttpException(
@@ -1856,27 +2995,40 @@ export class TransactionService implements ITraansactionService {
       }
       //const param = 'EXEC BRI_USP_dashboard ' + locationId;
       const consolidated = await this.alertMasterRepository.query(
-        'select woStatus,total,hold,todayReleased from BRI_View_Dashboard_initite_inprogress where Location=isnull(' +
-          locationId +
-          ',Location)',
+        'select woStatus,total,hold,todayReleased from BRI_View_Dashboard_initite_inprogress ',
       );
+      //    where Location=isnull(' +
+      //     locationId +
+      //     ',Location)',
+      // );
       const department_status = await this.alertMasterRepository.query(
-        ' select DepartmentCode,Initiated,Inprogress from BRI_View_Dashboard_initite_inprogress_by_department where LocationId=isnull(' +
-          locationId +
-          ',LocationId) order by  DepartmentCode ASC',
+        ' select DepartmentCode,Initiated,Inprogress from BRI_View_Dashboard_initite_inprogress_by_department',
       );
+      //    where LocationId=isnull(' +
+      //     locationId +
+      //     ',LocationId) order by  DepartmentCode ASC',
+      // );
       const plan_complete_ratio = await this.alertMasterRepository.query(
-        ' select DepartmentName,total from BRI_View_Dashboard_Ondate_Complete where Location=isnull(' +
-          locationId +
-          ',Location) order by  DepartmentName ASC',
+        ' select DepartmentName,total from BRI_View_Dashboard_Ondate_Complete order by DepartmentName asc',
       );
-      let dt = new Date();
+      //    where Location=isnull(' +
+      //     locationId +
+      //     ',Location) order by  DepartmentName ASC',
+      // );
+      const hold = await this.alertMasterRepository.query(
+        '(select COUNT(WorkOrderID) as hold from BRI_WorkOrderMaster where IsHolded=1)',
+      );
+      const todayReleased = await this.alertMasterRepository.query(
+        '(select COUNT(WorkOrderID) as todayReleased from BRI_WorkOrderMaster where cast(CreatedOn as date)=cast(GETDATE() as DATE))',
+      );
+      const dt = new Date();
       // dt = DateTime.now().setZone('Asia/Dubai').;
       return {
         consolidated,
         department_status,
-        plan_complete_ratio
-       
+        plan_complete_ratio,
+        hold: hold[0].hold,
+        todayReleased: todayReleased[0].todayReleased,
       };
     } catch (e) {
       console.log(e);
@@ -1889,11 +3041,23 @@ export class TransactionService implements ITraansactionService {
 
   async ItemRequistionItemTime_table(workorderStepId: any): Promise<any> {
     try {
-      const param =
-        'EXEC BRI_USP_operation_ItemRequistion_Timesheet ' + workorderStepId;
-      //  console.log(param, 'sp params');
-      const data = await this.timeSheetRepository.query(param);
+      // const param =
+      //   'EXEC BRI_USP_operation_ItemRequistion_Timesheet ' + workorderStepId;
+      // //  console.log(param, 'sp params');
+      // const data = await this.timeSheetRepository.query(param);
 
+      // return data;
+
+      const data = await this.timesheetItemMasterRepository.find({
+        where: { WorkorderStepId: workorderStepId, IsActive: true },
+        select: {
+          TimeSheetITemId: true,
+          Item: true,
+          AlloatedQuantity: true,
+          AvailableQuantity: true,
+        },
+      });
+      console.log(data, 'item data');
       return data;
     } catch (e) {
       console.log(e);
@@ -1947,26 +3111,331 @@ export class TransactionService implements ITraansactionService {
     }
   }
 
-  async getLiveIntervals(departmentId:any):Promise<any>{
-    try{
-      const intervalData=await this.intravelRepository.query("select * from BRI_UV_current_interval where DepartmentId="+departmentId);
+  // async meterial_requistion_table_list( dto: mrTableDto): Promise<any> {
+  //   try {
+  //     const department_id = dto.departmentId;
+  //     const location = dto.location == null ? null : '"' + dto.location + '"';
+  //     const ReleaseDate =
+  //       dto.releaseDate == null ? null : '"' + dto.releaseDate + '"';
+  //     const order_by = dto.order_by == null ? null : '"' + dto.order_by + '"';
+  //     const sort = dto.sort == null ? null : '"' + dto.sort + '"';
+  //     const search = dto.search == null ? null : '"' + dto.search + '"';
+  //     const param =
+  //       'exec BRI_USP_MeterialRequistion_Table ' +
+  //       location +
+  //       ',' +
+  //       ReleaseDate +
+  //       ',' +
+  //       department_id +
+  //       ',' +
+  //       dto.start +
+  //       ',' +
+  //       dto.page_size +
+  //       ',' +
+  //       order_by +
+  //       ',' +
+  //       sort +
+  //       ',' +
+  //       search;
+  //     console.log(param, 'sp params');
+  //     const data = this.workorderMasterRepository.query(param);
+  //     return data;
+  //   } catch (e) {
+  //     throw new HttpException(
+  //       { message: 'Internal Server Error.' + e },
+  //       HttpStatus.INTERNAL_SERVER_ERROR,
+  //     );
+  //   }
+  // }
+
+  async meterial_requistion_item_details(requistion_id): Promise<any> {
+    try {
+      const param =
+        'select * from  BRI_VIEW_ItemrequistionDetails where RequisitionID=' +
+        requistion_id;
+      console.log(param, 'sp params');
+      const data = this.workorderMasterRepository.query(param);
+      return data;
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async timesheet_table_list(dto: tsTableDto): Promise<any> {
+    try {
+      const department_id = dto.department_id;
+      const location = dto.location == null ? null : '"' + dto.location + '"';
+      const ReleaseDate =
+        dto.ReleaseDate == null ? null : '"' + dto.ReleaseDate + '"';
+      const order_by = dto.order_by == null ? null : '"' + dto.order_by + '"';
+      const sort = dto.sort == null ? null : '"' + dto.sort + '"';
+      const search = dto.search == null ? null : '"' + dto.search + '"';
+      const param =
+        'exec BRI_USP_Timesheet_Table ' +
+        location +
+        ',' +
+        ReleaseDate +
+        ',' +
+        department_id +
+        ',' +
+        dto.start +
+        ',' +
+        dto.page_size +
+        ',' +
+        order_by +
+        ',' +
+        sort +
+        ',' +
+        search;
+      console.log(param, 'sp params');
+      const data = this.workorderMasterRepository.query(param);
+      return data;
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async timesheet_detail_view(timesheetId: any): Promise<any> {
+    try {
+      //  console.log(timesheetId,'timesheetId');
+      const labourData = await this.workorderMasterRepository.query(
+        'select * from  BRI_VIEW_LabourTimesheet where TimeSheetID=' +
+          timesheetId,
+      );
+      const itemData = await this.workorderMasterRepository.query(
+        'select * from  BRI_VIEW_ItemTimesheet where TimeSheetID=' +
+          timesheetId,
+      );
+      const machineData = await this.workorderMasterRepository.query(
+        'select * from  BRI_VIEW_MachineTimesheet where TimeSheetID=' +
+          timesheetId,
+      );
+      const scrapData = await this.workorderMasterRepository.query(
+        'select * from  BRI_VIEW_ScrapTimesheet where TimeSheetID=' +
+          timesheetId,
+      );
+      // console.log(labourData,itemData,machineData,scrapData);
+      return { labourData, itemData, machineData, scrapData };
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getLiveIntervals(departmentId: any): Promise<any> {
+    try {
+      const intervalData = await this.intravelRepository.query(
+        'select * from BRI_UV_current_interval where DepartmentId=' +
+          departmentId,
+      );
       return intervalData;
-    // return [
-    //   {
-    //     "DepartmentId": "1",
-    //     "Start": "1970-01-01T04:55:00.000Z",
-    //     "EndTime": "1970-01-01T05:10:00.000Z",
-    //     "remainingMins": 2,
-    //     "intervalType": "Intrerval"
-    //   }
-    // ];
-    }catch(e)
-    {
+      // return [
+      //   {
+      //     "DepartmentId": "1",
+      //     "Start": "1970-01-01T04:55:00.000Z",
+      //     "EndTime": "1970-01-01T05:10:00.000Z",
+      //     "remainingMins": 2,
+      //     "intervalType": "Intrerval"
+      //   }
+      // ];
+    } catch (e) {
       console.log(e);
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+    }
+  }
+
+  async getMultiEmployeeTsCalc(labourTsId: any): Promise<any> {
+    try {
+      const labourTsData = await this.intravelRepository.query(
+        'exec BRI_USP_Multi_EmployeeTS_Calc ' + labourTsId,
+      );
+
+      const requiredTsData = labourTsData.filter(
+        (x) =>
+          x.LabourTsId === labourTsId && x.ParrentLabourTsId === labourTsId,
+      );
+      const previousTsData = labourTsData.filter(
+        (x) => x.ParrentLabourTsId === labourTsId && x.isPreviousStart === 1,
+      );
+      const afterTsData = labourTsData.filter(
+        (x) =>
+          (x.LabourTsId != labourTsId || x.ParrentLabourTsId != labourTsId) &&
+          x.isPreviousStart === 0,
+      );
+      const finalData = [];
+      let previousAvg = 0;
+      let index = 0;
+      for await (const data of afterTsData) {
+        const avg =
+          (data.endTimeDifference - previousAvg) / labourTsData.length;
+        console.log(
+          '(data.endTimeDifference-previousAvg)/(labourTsData.length) (',
+          data.endTimeDifference,
+          '-',
+          previousAvg,
+          ')/(',
+          labourTsData.length,
+          ')=',
+          avg,
+        );
+        data.averageMins = avg;
+        previousAvg = previousAvg + avg;
+        finalData.push(data);
+        index = index + 1;
+        if (afterTsData.length === index) {
+          if (previousTsData.length > 0) {
+            requiredTsData[0].averageMins =
+              (requiredTsData[0].endTimeDifference - previousAvg) /
+              (previousTsData.length + 1);
+            console.log(
+              '(requiredTsData[0].endTimeDifference-previousAvg)/(previousTsData.length) (',
+              requiredTsData[0].endTimeDifference,
+              '-',
+              previousAvg,
+              ')/(',
+              previousTsData.length + 1,
+              ')=',
+              requiredTsData[0].averageMins,
+            );
+          } else {
+            requiredTsData[0].averageMins =
+              requiredTsData[0].endTimeDifference - previousAvg;
+            console.log(
+              '(requiredTsData[0].endTimeDifference-previousAvg) (',
+              requiredTsData[0].endTimeDifference,
+              '-',
+              previousAvg,
+              ')= requiredTsData[0].averageMins',
+            );
+          }
+          finalData.push(requiredTsData[0]);
+          for await (const prevData of previousTsData) {
+            prevData.averageMins =
+              requiredTsData[0].averageMins + prevData.startTimeDifference;
+            console.log(
+              ' requiredTsData[0].averageMins+prevData.startTimeDifference: ',
+              requiredTsData[0].averageMins,
+              '+',
+              prevData.startTimeDifference,
+              '=',
+              prevData.averageMins,
+            );
+            finalData.push(prevData);
+          }
+        }
+      }
+
+      // console.log(requiredTsData,'requiredTsData');
+      // console.log(previousTsData,'previousTsData');
+      // console.log(afterTsData,'afterTsData');
+      return { finalData, labourTsData };
+    } catch (e) {
+      console.log(e);
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async project_type_list(subsidiary_id: any,project_id:any): Promise<any> {
+    try {
+      const qb = await this.workorderMasterRepository.createQueryBuilder('wh');
+      qb.select('wh.BusinessUnit', 'BusinessUnit');
+      qb.addSelect('wh.BusinessUnitId', 'BusinessUnitId');
+    
+      qb.groupBy('wh.BusinessUnit,wh.BusinessUnitId');
+      return await qb.getRawMany();
+    } catch (e) {
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async timesheet_changeRequest(dto:tsChangeRequest):Promise<any>{
+    try{
+          const dt = await this.drpTaxnomyRepository.query('select getdate() currentDt');
+          const dtNow=new Date(dt[0].currentDt);
+          const status = await this.drpTaxnomyRepository.find({
+            where: { TaxnomyType: 'ChangeRequestStatus', IsActive: true },
+          });
+          
+          if(dto.request_id==0)
+          {
+            const statusObj=status.find(x=>x.TaxnomyCode==='REQUESTED');
+            const crTbl=new BRI_ChangeRequestFlow();
+            crTbl.StatusId=statusObj.TaxnomyId;
+            crTbl.Remarks=dto.remarks;
+            crTbl.IsActive=true;
+            crTbl.CreatedOn=dtNow;
+            crTbl.CreatedBy=dto.user_id;
+            crTbl.TimesheetID=dto.timesheet_id;
+            const CRSave=await this.timsheetChangeRequestRepository.save(crTbl);
+            if(CRSave && CRSave.RequestID>0)
+            {
+              for await(const labDto of dto.labourTimeSheet)
+              {
+                const labTbl=new BRI_LabourTimeSheetChangeRequest();
+                labTbl.CreatedOn=dtNow;
+                labTbl.CreatedBy=dto.user_id;
+                labTbl.RequestId=CRSave.RequestID;
+                labTbl.IsActive=true;
+                labTbl.LabourID=labDto.labour_id;
+                labTbl.TimeSheetLabourID=labDto.labourTimesheet_id;
+                labTbl.WorkHrsInMin=labDto.workHrsInMin;
+                labTbl.StartTime=labDto.start_time;
+                labTbl.EndTime=labDto.end_time;
+                labTbl.StatusId=statusObj.TaxnomyId;
+                await this.labourTsChangeRequestRepository.save(labTbl);
+              }
+              for await(const macDto of dto.machineTimeSheet)
+              {
+                const macTbl= new BRI_MachineTimesheetChangeRequest();
+                macTbl.MachineTimesheetId=macDto.MachineTimesheetId;
+                macTbl.MachineId=macDto.machine_id;
+                macTbl.Remarks=macDto.remarks;
+                macTbl.RequestId=CRSave.RequestID;
+                macTbl.Duration=macDto.duration;
+                macTbl.CreatedOn=dtNow;
+                macTbl.CreatedBy=dto.user_id;
+                macTbl.IsActive=true;
+                macTbl.StatusId=statusObj.TaxnomyId;
+                await this.machineTsChangeRequestRepository.save(macTbl);
+              }
+
+              for await(const sDto of dto.scrapTimeSheet)
+              {
+                const scrapTbl=new BRI_ScrapTSChangeRequest();
+                scrapTbl.RequestId=CRSave.RequestID;
+                scrapTbl.Remarks=sDto.remarks;
+                scrapTbl.ScrapTimesheetId=sDto.scrap_timesheet_id;
+                scrapTbl.ScrapItem=sDto.scrap_item;
+                scrapTbl.Quantity=sDto.quantity;
+                scrapTbl.IsActive=true;
+                scrapTbl.CreatedBy=dto.user_id;
+                scrapTbl.CreatedOn=dtNow;
+                scrapTbl.StatusId=statusObj.TaxnomyId;
+                await this.scrapTsChangeRequestRepository.save(scrapTbl);
+
+              }
+            }
+          }
+    }catch(e)
+    {
+      console.log(e);
     }
   }
 
@@ -1978,6 +3447,15 @@ export class TransactionService implements ITraansactionService {
       const [list, count] = await this.timeSheetRepository.findAndCount({
         where: { DepartmentID: department_id, SubsidiaryID: location_id },
       });
+
+      const loc = await this.drpTaxnomyRepository.findOne({
+        where: { TaxnomyId: location_id },
+      });
+      let locLetter = 'DIP';
+      if (loc.TaxnomyCode == 'BRI UAQ WH') {
+        locLetter = 'UAQ';
+      }
+
       const departmentName = depTbl.DepartmentCode;
       const firstLtr = departmentName.slice(0, 1);
       let lastLtr = departmentName.slice(-1);
@@ -1990,7 +3468,7 @@ export class TransactionService implements ITraansactionService {
       const dt = new Date();
       return (
         'TS' +
-        location_id +
+        locLetter +
         firstLtr.toLocaleUpperCase() +
         lastLtr.toLocaleUpperCase() +
         (dt.getMonth() + 1) +
@@ -2011,6 +3489,13 @@ export class TransactionService implements ITraansactionService {
       const [list, count] = await this.itemRequissitionRepository.findAndCount({
         where: { DepartmentID: department_id, SubsidiaryID: location_id },
       });
+      const loc = await this.drpTaxnomyRepository.findOne({
+        where: { TaxnomyId: location_id },
+      });
+      let locLetter = 'DIP';
+      if (loc.TaxnomyCode == 'BRI UAQ WH') {
+        locLetter = 'UAQ';
+      }
       const departmentName = depTbl.DepartmentCode;
       const firstLtr = departmentName.slice(0, 1);
       let lastLtr = departmentName.slice(-1);
@@ -2023,7 +3508,7 @@ export class TransactionService implements ITraansactionService {
       const dt = new Date();
       return (
         'MR' +
-        location_id +
+        locLetter +
         firstLtr.toLocaleUpperCase() +
         lastLtr.toLocaleUpperCase() +
         (dt.getMonth() + 1) +
@@ -2061,6 +3546,79 @@ export class TransactionService implements ITraansactionService {
     );
   }
 
+
+  async workorderCompletionMailTrigger(workorder_id:any)
+  {
+    console.log(workorder_id,'mail functions');
+    try{
+      if(workorder_id>0)
+      {
+        const toMails=await this.alertMasterRepository.findOne({where:{AlertName:'Workorder-Completion',IsActive:1}});
+        if(toMails!=null)
+        {
+        const status = await this.drpTaxnomyRepository.findOne({
+          where: { TaxnomyType: 'WorkOrderStatus', TaxnomyCode:'Completed',IsActive:true },
+        });
+
+        const woDetails= await this.workorderMasterRepository.findOne({where:{WorkOrderID:workorder_id}});// ,StatusID:status.TaxnomyId}});
+        if(woDetails!=null)
+        {
+        const plan = 'exec BRI_USP_WorOrder_Planning_details ' + workorder_id;
+        const planDetils=await this.drpTaxnomyRepository.query(plan);
+        let tbody="";
+        let si=1;
+        for await(const pd of planDetils) 
+        {
+          const active=pd.IsActive==true?'Active':'In Active';
+          tbody=tbody+'<tr><td>'+si+'</td><td>'+pd.DepartmentName+'</td><td>'+pd.actualEnd+'</td><td>'+pd.progress+'</td><td>'+active+'</td></tr>';
+          si=si+1;
+
+        }
+        
+          const location = join(
+          __dirname,
+          '../shared/template/mail/workorder_complete_mail.html',
+        );
+        const options = {
+          encoding: 'utf-8',
+        };
+          const html = readFileSync(location);
+        const mail_content = html;
+        const Work_Status='Completed';
+        const Project=woDetails.ProjectID+'  -  '+woDetails.ProjectName; 
+        const Sub_Project=woDetails.SubProjectID+'  - '+woDetails.SubProjectName;
+        const workorder_no=woDetails.WorkOrderNo;
+        const mail_html = mail_content
+          .toString()
+          .replace('@@Work_Status@@', Work_Status)
+          .replace('@@Project@@', Project)
+          .replace('@@Sub_Project@@', Sub_Project)
+          .replace('@@WorkOrderNo@@', workorder_no)
+          .replace('@@tbody@@', tbody);
+          
+        const subject = woDetails.WorkOrderNo+' is Completed.';
+        const toMaile = toMails.toEmail;
+
+        this.sendEmail(
+          toMaile,
+          '',
+          subject,
+          mail_html,
+          '',
+          '',
+        );
+
+        }
+      }
+    }
+    }catch(e)
+    {
+      console.log(e);
+    }
+
+  }
+
+
   async sendEmail(
     to: any,
     from: any,
@@ -2090,4 +3648,13 @@ export class TransactionService implements ITraansactionService {
     //   console.log(err);
     // });
   }
+}
+function html(
+  toEmail: string,
+  arg1: string,
+  arg2: string,
+  html: any,
+  arg4: string,
+) {
+  throw new Error('Function not implemented.');
 }

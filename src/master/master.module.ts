@@ -32,7 +32,9 @@ import {
   BRI_WorkOrderSteps,
   BRI_WorkOrderStepsHistory,
   BRI_AuthUsers,
-  BRI_AuthUsersHistory
+  BRI_AuthUsersHistory,
+  BRI_EmployeeDepartmentMap,
+  BRI_EmployeeDepartmentMappingHistory
 } from './entities/master.entity';
 
 import { CommonService } from '../shared/services/common.service';
@@ -73,7 +75,9 @@ import { Repository } from 'typeorm';
       BRI_WorkOrderSteps,
       BRI_WorkOrderStepsHistory,
       BRI_AuthUsers,
-      BRI_AuthUsersHistory
+      BRI_AuthUsersHistory,
+      BRI_EmployeeDepartmentMap,
+      BRI_EmployeeDepartmentMappingHistory
     ]),
     SharedModule,
   ],

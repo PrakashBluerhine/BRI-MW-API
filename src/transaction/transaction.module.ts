@@ -31,7 +31,13 @@ import {
   BRI_MasterIntraval,
   BRI_MasterItem,
   BRI_ScrapItemTimesheet,
-  BRI_MachineTimesheet
+  BRI_MachineTimesheet,
+  BRI_LabourMultiTaskTsDetails,
+  BRI_TimesheetItemMaser,
+  BRI_ChangeRequestFlow,
+  BRI_MachineTimesheetChangeRequest,
+  BRI_ScrapTSChangeRequest,
+  BRI_LabourTimeSheetChangeRequest
 } from './entities/transaction.entity';
 
 import { CommonService } from '../shared/services/common.service';
@@ -71,7 +77,13 @@ import { Repository } from 'typeorm';
       BRI_MasterIntraval,
       BRI_MasterItem,
       BRI_ScrapItemTimesheet,
-      BRI_MachineTimesheet
+      BRI_MachineTimesheet,
+      BRI_LabourMultiTaskTsDetails,
+      BRI_TimesheetItemMaser,
+      BRI_ChangeRequestFlow,
+      BRI_MachineTimesheetChangeRequest,
+      BRI_ScrapTSChangeRequest,
+      BRI_LabourTimeSheetChangeRequest
     ]),
     SharedModule,
   ],

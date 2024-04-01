@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  HttpStatus,
-  HttpException,
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, HttpStatus, HttpException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validate } from 'class-validator';
@@ -44,8 +38,9 @@ require('dotenv').config({
 });
 @Injectable()
 export class AuthService implements IAuthService {
+  private logger = new Logger(AuthService.name); 
   secret = 'JWT_SECRET';
-  expiresIn = '30m';
+  expiresIn = '24h';
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
@@ -67,7 +62,7 @@ export class AuthService implements IAuthService {
     private readonly mailerService: MailerService,
   ) {
     this.secret = 'JWT_SECRET';
-    this.expiresIn = '30m';
+    this.expiresIn = '24h';
   }
   async authenticate(dto: LoginUserDto): Promise<any> {
     try {
@@ -110,6 +105,11 @@ export class AuthService implements IAuthService {
             sessionTbl.Ploatform = dto.plat_form;
             sessionTbl.UserId = userData[0].UserId;
             const session = await this.authSessionRepository.save(sessionTbl);
+            this.logger.log({
+              level: 'warn',
+              message: 'Login successfully.',
+              refCode: dto,
+            });
             return {
               message: 'Login successfully',
               user: userData[0],
@@ -118,12 +118,22 @@ export class AuthService implements IAuthService {
               session_id: session.SessionId,
             };
           } else {
+            this.logger.log({
+              level: 'warn',
+              message: 'Role Not Assigned.',
+              refCode: dto,
+            });
             throw new HttpException(
               { message: 'Role Not Assigned.' },
               HttpStatus.UNAUTHORIZED,
             );
           }
         } else {
+          this.logger.log({
+            level: 'warn',
+            message: 'Login successfully.',
+            refCode: dto,
+          });
           throw new HttpException(
             { message: 'Password not  matched.' },
             HttpStatus.UNAUTHORIZED,
@@ -173,8 +183,6 @@ export class AuthService implements IAuthService {
         where: { TaxnomyId: dto.subsidiary_id },
       });
       if (count == 0 && dto.user_id == 0) {
-      
-
         const dt = new Date();
         const dbTbl = new BRI_AuthUsers();
         // dbTbl.UserId=0;
@@ -255,7 +263,7 @@ export class AuthService implements IAuthService {
           LastName: dto.last_name,
           Email: dto.email,
           //  DOB: dto.dob,
-        
+
           Password:
             dto.password != null && dto.password != ''
               ? bcrypt.hashSync(dto.password, 10)
@@ -516,7 +524,8 @@ export class AuthService implements IAuthService {
       // if(dto.subsidiary_id>0)
       // q.andWhere('u.SubsidiaryId=subsidiary_id',{subsidiary_id:dto.subsidiary_id});
 
-      const param = 'exec BRI_USP_UserTable ';
+    const param = 'exec BRI_USP_UserTable ';
+   // const param='select * from [BRI.UserRole]';
 
       const data = this.userRepository.query(param);
 

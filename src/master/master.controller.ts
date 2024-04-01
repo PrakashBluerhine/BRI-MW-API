@@ -10,9 +10,11 @@ import {
   UsePipes,
   Param,
   Get,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
-import { ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
 import { get } from 'http';
 import { HttpExceptionFilter } from '../shared/exception-filters/http-exception.filter';
 import {
@@ -40,6 +42,8 @@ export class MasterController {
 
   @ApiBody({ type: RoleCreationDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('create_role')
   public async create_role(
     @Body() roleCreationDto: RoleCreationDto,
@@ -54,6 +58,8 @@ export class MasterController {
 
   @ApiBody({ type: TableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('role_table')
   public async role_table(@Body() tableDto: TableDto): Promise<any> {
     const response = await this.iMasterService.role_table(tableDto);
@@ -66,6 +72,8 @@ export class MasterController {
 
   @ApiBody({ type: newEmployeeDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('employee_add_update')
   public async employee_add_update(
     @Body() tableDto: newEmployeeDto,
@@ -79,6 +87,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('department_list/:subsidiary_id')
   public async department_list(
     @Param('subsidiary_id') subsidiary_id: number,
@@ -93,6 +103,8 @@ export class MasterController {
 
   @ApiBody({ type: employeeTableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('employee_list_table')
   public async employee_list_table(dto: employeeTableDto): Promise<any> {
     try {
@@ -121,8 +133,26 @@ export class MasterController {
     );
   }
 
+  @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
+  @Get('employee_department_list/:employee_id')
+  public async employee_department_list(
+    @Param('employee_id') employee_id: number,
+  ): Promise<any> {
+    const response =
+      await this.iMasterService.employee_department_list(employee_id);
+    return this.iMasterService.customResponse(
+      response,
+      'Department List!',
+      HttpStatus.OK.toString(),
+    );
+  }
+
   @ApiBody({ type: machineryTableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('machinery_list_table')
   public async machinery_list_table(dto: machineryTableDto): Promise<any> {
     try {
@@ -139,6 +169,8 @@ export class MasterController {
 
   @ApiBody({ type: newMailAlertDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('mail_alert')
   public async mail_alert(@Body() Dto: newMailAlertDto): Promise<any> {
     const response = await this.iMasterService.email_alert(Dto);
@@ -151,6 +183,8 @@ export class MasterController {
 
   @ApiBody({ type: emailAlertTableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('email_alert_list_table')
   public async email_alert_list_table(dto: emailAlertTableDto): Promise<any> {
     try {
@@ -165,6 +199,8 @@ export class MasterController {
     }
   }
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('email_alert_receipient_list/:alert_id')
   public async email_alert_receipient_list(
     @Param('alert_id') alert_id: number,
@@ -179,6 +215,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('employee_email_list/:subsidiary_id')
   public async employee_email_list(
     @Param('subsidiary_id') subsidiary_id: number,
@@ -193,6 +231,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('drp_taxnomy_list/:subsidiary_id/:type')
   public async drp_taxnomy_list(
     @Param('subsidiary_id') subsidiary_id: number,
@@ -211,6 +251,8 @@ export class MasterController {
 
   @ApiBody({ type: newMenuDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('menu_add_update')
   public async menu_add_update(@Body() Dto: newMenuDto): Promise<any> {
     const response = await this.iMasterService.menu_add_update(Dto);
@@ -223,6 +265,8 @@ export class MasterController {
 
   @ApiBody({ type: TableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('menu_fetch_all')
   public async menu_table(@Body() tableDto: TableDto): Promise<any> {
     const response = await this.iMasterService.menu_table(tableDto);
@@ -234,6 +278,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('menu_mapped_group_list/:menu_id')
   public async menu_mapped_group_list(
     @Param('menu_id') menu_id: number,
@@ -248,6 +294,8 @@ export class MasterController {
 
   @ApiBody({ type: newRolePermissionDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('role_menu_permission')
   public async role_menu_permission(
     @Body() Dto: newRolePermissionDto,
@@ -261,6 +309,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('menu_role_permission/:role_id/:group_id/:subsidiary_id')
   public async menu_role_permission(
     @Param('role_id') role_id: number,
@@ -280,6 +330,8 @@ export class MasterController {
   }
 
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('masterData')
   public async masterData(): Promise<any> {
     const response = await this.iMasterService.masterData();
@@ -292,6 +344,8 @@ export class MasterController {
 
   @ApiBody({ type: allWorkorderTableDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('work_order_list_all')
   public async work_order_list_all(
     @Body() tableDto: allWorkorderTableDto,

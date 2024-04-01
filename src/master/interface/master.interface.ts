@@ -36,6 +36,7 @@ export interface IMasterService {
   menu_role_permission(dto): Promise<any>;
   masterData(): Promise<any>;
   new_work_order_list(dto: allWorkorderTableDto): Promise<any>;
+  employee_department_list(employee_id: number): Promise<any>;
   customResponse(
     data: object,
     message: string,

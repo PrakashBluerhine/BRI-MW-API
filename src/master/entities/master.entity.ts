@@ -450,6 +450,12 @@ export class BRI_MasterEmailAlert {
   AlertCode: string;
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
+  @Column({ name: 'toEmail' })
+  toEmail: string;
+  @Column({ name: 'ccEmail' })
+  ccEmail: string;
+  @Column({ name: 'bccEmail' })
+  bccEmail: string;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -474,6 +480,12 @@ export class BRI_MasterEmailAlertHistory {
   AlertCode: string;
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
+  @Column({ name: 'toEmail' })
+  toEmail: string;
+  @Column({ name: 'ccEmail' })
+  ccEmail: string;
+  @Column({ name: 'bccEmail' })
+  bccEmail: string;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -639,6 +651,10 @@ export class BRI_WorkOrderMaster {
   BusinessUnit: string;
   @Column({ name: 'BusinessUnitId' })
   BusinessUnitId: string;
+  @Column({ name: 'SignType' })
+  SignType: string;
+  @Column({ name: 'SalesMan' })
+  SalesMan: string;
 }
 
 @Entity({ name: 'BRI_WorkOrderMasterHistory' })
@@ -695,6 +711,10 @@ export class BRI_WorkOrderMasterHistory {
   BusinessUnit: string;
   @Column({ name: 'BusinessUnitId' })
   BusinessUnitId: string;
+  @Column({ name: 'SignType' })
+  SignType: string;
+  @Column({ name: 'SalesMan' })
+  SalesMan: string;
 }
 
 @Entity({ name: 'BRI_WorkOrderSteps' })
@@ -907,4 +927,43 @@ export class BRI_AuthUsersHistory {
   created_by: number;
   @Column({ name: 'LocationId' })
   LocationId: number;
+}
+
+@Entity ({name:"BRI_EmployeeDepartmentMap"})
+export class BRI_EmployeeDepartmentMap{
+  @PrimaryGeneratedColumn({ name: 'MapId' })
+  MapId: number;
+  @Column({ name: 'EmployeeId' })
+  EmployeeId: number;
+  @Column({ name: 'DepartmentId' })
+  DepartmentId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+
+@Entity ({name:"BRI_EmployeeDepartmentMappingHistory"})
+export class BRI_EmployeeDepartmentMappingHistory{
+  @PrimaryGeneratedColumn({ name: 'HistoryId' })
+  HistoryId: number;
+  @Column({ name: 'MapId' })
+  MapId: number;
+  @Column({ name: 'EmployeeId' })
+  EmployeeId: number;
+  @Column({ name: 'DepartmentId' })
+  DepartmentId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
 }

@@ -35,6 +35,8 @@ export class allWorkorderTableDto {
   sort: string;
   @ApiProperty()
   search: string;
+  @ApiProperty()
+  filter: string;
 }
 
 export class departmentOperationTableDto {
@@ -94,6 +96,8 @@ export class workOrderHoldCance {
   @ApiProperty()
   mode: string;
   @ApiProperty()
+  holdReasonId: number;
+  @ApiProperty()
   userId: number;
 }
 
@@ -108,13 +112,19 @@ export class meterialRequistion {
   locationId: number;
   @ApiProperty({
     isArray: true,
+    type: () => itemDetails,
   })
   @IsNotEmpty()
-  workOrderItemId: [];
+  workOrderItemId: any;
   @ApiProperty()
   userId: number;
 }
-
+class itemDetails {
+  @ApiProperty()
+  id: number;
+  @ApiProperty()
+  quantity: number;
+}
 export class woOperationStart {
   @ApiProperty()
   workorderId: number;
@@ -154,6 +164,9 @@ export class woOperationHoldAndCompleteDto {
   projectId: string;
   @ApiProperty()
   userId: number;
+  @ApiProperty()
+  holdReasonId: number;
+
   @ApiProperty({
     isArray: true,
     type: () => itemTimeSheetDto,
@@ -182,7 +195,7 @@ class itemTimeSheetDto {
   @ApiProperty()
   remarks: string;
   @ApiProperty()
-  workOrderItemId: number;
+  TimeSheetITemId: number;
 }
 
 class machineryTimeSheetDto {
@@ -193,7 +206,7 @@ class machineryTimeSheetDto {
 }
 class scrapTimeSheetDto {
   @ApiProperty()
-  scrapItemId: number;
+  scrapItem: string;
   @ApiProperty()
   quantity: number;
 }
@@ -219,4 +232,95 @@ export class mrTableDto {
   sort: string;
   @ApiProperty()
   search: string;
+}
+
+export class tsTableDto {
+  @ApiProperty()
+  department_id: number;
+  @ApiProperty()
+  location: string;
+  @ApiProperty()
+  ReleaseDate: string;
+  @ApiProperty()
+  subsidiary_id: number;
+  @ApiProperty()
+  start: number;
+  @ApiProperty()
+  page_size: number;
+  @ApiProperty()
+  order_by: string;
+  @ApiProperty()
+  sort: string;
+  @ApiProperty()
+  search: string;
+}
+
+export class tsChangeRequest {
+  @ApiProperty()
+  timesheet_id: number;
+  @ApiProperty()
+  request_id: number;
+  @ApiProperty()
+  remarks: string;
+  @ApiProperty()
+  user_id: number;
+  @ApiProperty({
+    isArray: true,
+    type: () => labourTimeSheetChangeRequest,
+  })
+  @IsNotEmpty()
+  labourTimeSheet: any;
+  @ApiProperty({
+    isArray: true,
+    type: () => machineTimeSheetChangeRequest,
+  })
+  @IsNotEmpty()
+  machineTimeSheet: any;
+  @ApiProperty({
+    isArray: true,
+    type: () => scrapTimeSheetChangeRequest,
+  })
+  @IsNotEmpty()
+  scrapTimeSheet: any;
+}
+
+class labourTimeSheetChangeRequest {
+  @ApiProperty()
+  ChangeRequestId: number;
+  @ApiProperty()
+  labourTimesheet_id: number;
+  @ApiProperty()
+  labour_id: number;
+  @ApiProperty()
+  start_time: Date;
+  @ApiProperty()
+  end_time: Date;
+  @ApiProperty()
+  workHrsInMin: number;
+}
+
+class machineTimeSheetChangeRequest{
+  @ApiProperty()
+  MachineTsCRId: number;
+  @ApiProperty()
+  MachineTimesheetId: number;
+  @ApiProperty()
+  machine_id: number;
+  @ApiProperty()
+  duration: number;
+  @ApiProperty()
+  remarks: string;
+}
+
+class scrapTimeSheetChangeRequest{
+  @ApiProperty()
+  change_requestId: number;
+  @ApiProperty()
+  scrap_timesheet_id: number;
+  @ApiProperty()
+  scrap_item: string;
+  @ApiProperty()
+  remarks: string;
+  @ApiProperty()
+  quantity: number;
 }

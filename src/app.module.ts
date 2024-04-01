@@ -1,4 +1,4 @@
-import { Module,NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -11,7 +11,8 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from './config/database/database.module';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { TimezoneMiddleware } from './shared/middleware/timezone.middleware';
+import { JwtStrategy } from './jwt.startegy';
+import { EventsGateway } from './shared/services/events.gateway';
 @Module({
   imports: [
     AuthModule,
@@ -47,7 +48,7 @@ import { TimezoneMiddleware } from './shared/middleware/timezone.middleware';
         },
       },
       defaults: {
-        from: 'SBH rprakashkgm@gmail.com', // outgoing email ID
+        from: 'rprakashkgm@gmail.com', // outgoing email ID
       },
       template: {
         dir: process.cwd() + '/template/',
@@ -59,7 +60,8 @@ import { TimezoneMiddleware } from './shared/middleware/timezone.middleware';
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, JwtStrategy, EventsGateway],
+  exports: [JwtStrategy, PassportModule],
 })
 
 export class AppModule {}

@@ -1,4 +1,16 @@
-import { allWorkorderTableDto, departmentOperationTableDto, meterialRequistion, mrTableDto, TableDto, woOperationHoldAndCompleteDto, woOperationStart, workOrderHoldCance, workorderPlanDto } from '../dto/transaction.dto';
+import {
+  allWorkorderTableDto,
+  departmentOperationTableDto,
+  meterialRequistion,
+  mrTableDto,
+  TableDto,
+  tsChangeRequest,
+  tsTableDto,
+  woOperationHoldAndCompleteDto,
+  woOperationStart,
+  workOrderHoldCance,
+  workorderPlanDto,
+} from '../dto/transaction.dto';
 import { ResponseDto } from '../../shared/dto/response.dto';
 
 //import { ForgotPasswordDto, LoginMobileDto, LoginUserDto, UpdatePasswordDto, UserTokenDto, VerifyOtpDto } from "../dto/login-user.dto";
@@ -28,6 +40,13 @@ export interface ITraansactionService {
   ScrapItemTime_table(workorderStepId: any): Promise<any>;
   meterial_requistion_table(dto: mrTableDto): Promise<any>;
   getLiveIntervals(departmentId: any): Promise<any>;
+  // meterial_requistion_table_list(dto: mrTableDto): Promise<any>;
+  meterial_requistion_item_details(requistion_id): Promise<any>;
+  timesheet_table_list(dto: tsTableDto): Promise<any>;
+  timesheet_detail_view(timesheetId: any): Promise<any>;
+  getMultiEmployeeTsCalc(labourTsId: any): Promise<any>;
+  project_type_list(subsidiary_id: any, project_id: any): Promise<any>;
+  timesheet_changeRequest(dto: tsChangeRequest): Promise<any>;
   customResponse(
     data: object,
     message: string,

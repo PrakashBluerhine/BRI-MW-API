@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { time } from 'node:console';
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
@@ -133,6 +134,12 @@ export class BRI_MasterEmailAlert {
   AlertCode: string;
   @Column({ name: 'SubsidiaryId' })
   SubsidiaryId: number;
+  @Column({ name: 'toEmail' })
+  toEmail: string;
+  @Column({ name: 'ccEmail' })
+  ccEmail: string;
+  @Column({ name: 'bccEmail' })
+  bccEmail: string;
   @Column({ name: 'IsActive' })
   IsActive: number;
   @Column({ name: 'CreatedOn' })
@@ -206,6 +213,8 @@ export class BRI_WorkOrderMaster {
   HoldedOn: Date;
   @Column({ name: 'HoldedBy' })
   HoldedBy: number;
+  @Column({ name: 'HoldReasonId' })
+  HoldReasonId: number;
   @Column({ name: 'IsDeleted' })
   IsDeleted: boolean;
   @Column({ name: 'DeletedOn' })
@@ -224,6 +233,10 @@ export class BRI_WorkOrderMaster {
   BusinessUnit: string;
   @Column({ name: 'BusinessUnitId' })
   BusinessUnitId: number;
+  @Column({ name: 'SignType' })
+  SignType: string;
+  @Column({ name: 'SalesMan' })
+  SalesMan: string;
 }
 
 @Entity({ name: 'BRI_WorkOrderMasterHistory' })
@@ -272,6 +285,8 @@ export class BRI_WorkOrderMasterHistory {
   HoldedOn: Date;
   @Column({ name: 'HoldedBy' })
   HoldedBy: number;
+  @Column({ name: 'HoldReasonId' })
+  HoldReasonId: number;
   @Column({ name: 'IsDeleted' })
   IsDeleted: boolean;
   @Column({ name: 'DeletedOn' })
@@ -288,6 +303,10 @@ export class BRI_WorkOrderMasterHistory {
   BusinessUnit: string;
   @Column({ name: 'BusinessUnitId' })
   BusinessUnitId: number;
+  @Column({ name: 'SignType' })
+  SignType: string;
+  @Column({ name: 'SalesMan' })
+  SalesMan: string;
 }
 
 @Entity({ name: 'BRI_WorkOrderSteps' })
@@ -750,8 +769,10 @@ export class BRI_ScrapItemTimesheet{
   ScrapTimesheetId: number;
   @Column({ name: 'TimesheetId' })
   TimesheetId: number;
-  @Column({ name: 'ScrapItemId' })
-  ScrapItemId: number;
+  @Column({ name: 'ScrapItem' })
+  ScrapItem: string;
+  @Column({ name: 'Remarks' })
+  Remarks: string;
   @Column({ name: 'Quantity' })
   Quantity: number;
   @Column({ name: 'WorkorderStepId' })
@@ -795,3 +816,178 @@ export class BRI_MachineTimesheet{
   @Column({ name: 'ModifiedBy' })
   ModifiedBy: number;
 }
+
+@Entity ({name:"BRI_LabourMultiTaskTsDetails"})
+export class BRI_LabourMultiTaskTsDetails{
+  @PrimaryGeneratedColumn({ name: 'MultiTaskTsId' })
+  MultiTaskTsId: number;
+  @Column({ name: 'ParrentLabourTsId' })
+  ParrentLabourTsId: number;
+  @Column({ name: 'LabourTsId' })
+  LabourTsId: number;
+  @Column({ name: 'StartTime' })
+  StartTime: Date;
+  @Column({ name: 'EndTime' })
+  EndTime: Date;
+  @Column({ name: 'ConsolidatedDuration' })
+  ConsolidatedDuration: number;
+  @Column({ name: 'NoOfTask' })
+  NoOfTask: number;
+  @Column({ name: 'IsCompleted' })
+  IsCompleted: boolean;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+}
+
+@Entity ({name:"BRI_TimesheetItemMaser"})
+export class BRI_TimesheetItemMaser{
+  @PrimaryGeneratedColumn({ name: 'TimeSheetITemId' })
+  TimeSheetITemId: number;
+  @Column({ name: 'WorkOrderId' })
+  WorkOrderId: number;
+  @Column({ name: 'WorkOrderNo' })
+  WorkOrderNo: string;
+  @Column({ name: 'WorkorderStepId' })
+  WorkorderStepId: number;
+  @Column({ name: 'DepartmentId' })
+  DepartmentId: number;
+  @Column({ name: 'SignType' })
+  SignType: string;
+
+  @Column({ name: 'Item' })
+  Item: string;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'AlloatedQuantity' })
+  AlloatedQuantity: number;
+  @Column({ name: 'AvailableQuantity' })
+  AvailableQuantity: number;
+  @Column({ name: 'UsedQuantity' })
+  UsedQuantity: number;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+@Entity ({name:"BRI_ChangeRequestFlow"})
+export class BRI_ChangeRequestFlow{
+  @PrimaryGeneratedColumn({ name: 'RequestID' })
+  RequestID: number;
+  @Column({ name: 'TimesheetID' })
+  TimesheetID: number;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'Remarks' })
+  Remarks: string;
+  @Column({ name: 'IsClosed' })
+  IsClosed: boolean;
+  @Column({ name: 'ClosedOn' })
+  ClosedOn: Date;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+@Entity ({name:"BRI_MachineTimesheetChangeRequest"})
+export class BRI_MachineTimesheetChangeRequest{
+  @PrimaryGeneratedColumn({ name: 'MachineTsCRId' })
+  MachineTsCRId: number;
+  @Column({ name: 'MachineTimesheetId' })
+  MachineTimesheetId: number;
+  @Column({ name: 'RequestId' })
+  RequestId: number;
+  @Column({ name: 'MachineId' })
+  MachineId: number;
+  @Column({ name: 'Duration' })
+  Duration: number;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'Remarks' })
+  Remarks: string;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+
+@Entity ({name:"BRI_ScrapTSChangeRequest"})
+export class BRI_ScrapTSChangeRequest{
+  @PrimaryGeneratedColumn({ name: 'ChangeRequestId' })
+  ChangeRequestId: number;
+  @Column({ name: 'ScrapTimesheetId' })
+  ScrapTimesheetId: number;
+  @Column({ name: 'RequestId' })
+  RequestId: number;
+  @Column({ name: 'ScrapItem' })
+  ScrapItem: string;
+  @Column({ name: 'Remarks' })
+  Remarks: string;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'Quantity' })
+  Quantity: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+
+@Entity ({name:"BRI_LabourTimeSheetChangeRequest"})
+export class BRI_LabourTimeSheetChangeRequest{
+  @PrimaryGeneratedColumn({ name: 'ChangeRequestId' })
+  ChangeRequestId: number;
+  @Column({ name: 'TimeSheetLabourID' })
+  TimeSheetLabourID: number;
+  @Column({ name: 'RequestId' })
+  RequestId: number;
+  @Column({ name: 'LabourID' })
+  LabourID: number;
+  @Column({ name: 'StartTime' })
+  StartTime: Date;
+  @Column({ name: 'EndTime' })
+  EndTime: Date;
+  @Column({ name: 'WorkHrsInMin' })
+  WorkHrsInMin: number;
+  @Column({ name: 'StatusId' })
+  StatusId: number;
+  @Column({ name: 'IsActive' })
+  IsActive: boolean;
+  @Column({ name: 'CreatedOn' })
+  CreatedOn: Date;
+  @Column({ name: 'CreatedBy' })
+  CreatedBy: number;
+  @Column({ name: 'ModifiedOn' })
+  ModifiedOn: Date;
+  @Column({ name: 'ModifiedBy' })
+  ModifiedBy: number;
+}
+

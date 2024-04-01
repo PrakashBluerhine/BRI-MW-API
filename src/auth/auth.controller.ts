@@ -11,13 +11,17 @@ import {
   Get,
   Param,
   HttpException,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
-import { ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiParam, ApiTags } from '@nestjs/swagger';
 import { HttpExceptionFilter } from '../shared/exception-filters/http-exception.filter';
 import {
-  LoginUserDto,UserCreationDto, UserListRequestDto, UserResetRequestDto
-
+  LoginUserDto,
+  UserCreationDto,
+  UserListRequestDto,
+  UserResetRequestDto,
 } from './dto/auth.dto';
 import { AUTH_SERVICE, IAuthService } from './interface/auth.interface';
 
@@ -33,7 +37,7 @@ export class AuthController {
   @UsePipes(new ValidationPipe())
   @Post('login')
   public async authenticate(@Body() loginUserDto: LoginUserDto): Promise<any> {
-    let response=await this.iAuthService.authenticate(loginUserDto);
+    const response = await this.iAuthService.authenticate(loginUserDto);
     return this.iAuthService.customResponse(
       response,
       'Authentication',
@@ -43,47 +47,44 @@ export class AuthController {
 
   @ApiBody({ type: UserCreationDto })
   @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Post('user_creation')
   public async user_creation(@Body() UserDto: UserCreationDto): Promise<any> {
-    let response=await this.iAuthService.user_creation(UserDto);
+    const response = await this.iAuthService.user_creation(UserDto);
     return this.iAuthService.customResponse(
       response,
       'User Creation!',
       HttpStatus.OK.toString(),
     );
   }
- 
+
+  @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('logout/:session_id')
-  public async logout(
-    @Param('session_id') session_id: number
-  ): Promise<any> {
+  public async logout(@Param('session_id') session_id: number): Promise<any> {
     try {
-      let response=await this.iAuthService.logout(session_id);
+      const response = await this.iAuthService.logout(session_id);
       return this.iAuthService.customResponse(
         response,
         'Logout',
         HttpStatus.OK.toString(),
       );
-    
-
     } catch (e) {
       throw new HttpException(e, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
   @Get('resetLink/:user_name')
-  public async resetLink(
-    @Param('user_name') user_name: string
-  ): Promise<any> {
+  public async resetLink(@Param('user_name') user_name: string): Promise<any> {
     try {
-      let response=await this.iAuthService.resetLink(user_name);
+      const response = await this.iAuthService.resetLink(user_name);
       return this.iAuthService.customResponse(
         response,
         'Reset Link',
         HttpStatus.OK.toString(),
       );
-    
-
     } catch (e) {
       throw new HttpException(e, HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -91,17 +92,15 @@ export class AuthController {
 
   @Get('resetLinkValidation/:token')
   public async resetLinkValidation(
-    @Param('token') token: string
+    @Param('token') token: string,
   ): Promise<any> {
     try {
-      let response=await this.iAuthService.resetLinkValidation(token);
+      const response = await this.iAuthService.resetLinkValidation(token);
       return this.iAuthService.customResponse(
         response,
         'Reset Link',
         HttpStatus.OK.toString(),
       );
-    
-
     } catch (e) {
       throw new HttpException(e, HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -110,33 +109,31 @@ export class AuthController {
   @ApiBody({ type: UserResetRequestDto })
   @UsePipes(new ValidationPipe())
   @Post('reset_password')
-  public async reset_password(@Body() reset: UserResetRequestDto): Promise<any> {
-    let response=await this.iAuthService.resetPassword(reset);
-      return this.iAuthService.customResponse(
-        response,
-        'Reset Link',
-        HttpStatus.OK.toString(),
-      );
+  public async reset_password(
+    @Body() reset: UserResetRequestDto,
+  ): Promise<any> {
+    const response = await this.iAuthService.resetPassword(reset);
+    return this.iAuthService.customResponse(
+      response,
+      'Reset Link',
+      HttpStatus.OK.toString(),
+    );
   }
 
-
+  @UsePipes(new ValidationPipe())
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT-auth')
   @Get('user_list')
-  public async user_list_table(
-   
-  ): Promise<any> {
+  public async user_list_table(): Promise<any> {
     try {
-      let response=await this.iAuthService.user_list_table( );
+      const response = await this.iAuthService.user_list_table();
       return this.iAuthService.customResponse(
         response,
         'User list',
         HttpStatus.OK.toString(),
       );
-    
-
     } catch (e) {
       throw new HttpException(e, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }
-
-

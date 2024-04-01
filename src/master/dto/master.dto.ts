@@ -57,15 +57,25 @@ export class newEmployeeDto {
   email_id: string;
   @ApiProperty()
   desigination: string;
-  @ApiProperty()
-  department_id: number;
+  // @ApiProperty()
+  // department_id: number;
   @ApiProperty()
   subsidiary_id: number;
   @ApiProperty()
   IsActive: number;
   @ApiProperty()
   userId: number;
+  @ApiProperty({
+    isArray: true
+  })
+  @IsNotEmpty()
+  departments: [];
 }
+
+// class employyeDepartments{
+//   @ApiProperty()
+//   userId: number;
+// }
 
 export class employeeTableDto {
   @ApiProperty()
@@ -155,20 +165,26 @@ export class newMailAlertDto {
   isActive: number;
   @ApiProperty()
   userId: number;
-  @ApiProperty({
-    isArray: true,
-    type: () => alertRecipient,
-  })
-  @IsNotEmpty()
-  recipient: any;
+  @ApiProperty()
+  toEmail: string;
+  @ApiProperty()
+  ccEmail: string;
+  @ApiProperty()
+  bccEmail: string;
+  // @ApiProperty({
+  //   isArray: true,
+  //   type: () => alertRecipient,
+  // })
+  // @IsNotEmpty()
+  // recipient: any;
 }
 
-class alertRecipient {
-  @ApiProperty()
-  employee_Id: number;
-  @ApiProperty()
-  email: string;
-}
+// class alertRecipient {
+//   @ApiProperty()
+//   employee_Id: number;
+//   @ApiProperty()
+//   email: string;
+// }
 
 export class emailAlertTableDto {
   @ApiProperty()

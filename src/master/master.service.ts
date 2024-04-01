@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, HttpStatus, HttpException, Logger } from '@nestjs/common';
-import { Cron, SchedulerRegistry } from '@nestjs/schedule';
+import {
+  Cron,
+  SchedulerRegistry,
+  Interval,
+  Timeout,
+  CronExpression,
+} from '@nestjs/schedule';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validate } from 'class-validator';
@@ -37,7 +43,9 @@ import {
   BRI_WorkOrderSteps,
   BRI_WorkOrderStepsHistory,
   BRI_AuthUsers,
-  BRI_AuthUsersHistory
+  BRI_AuthUsersHistory,
+  BRI_EmployeeDepartmentMap,
+  BRI_EmployeeDepartmentMappingHistory,
 } from './entities/master.entity';
 import { ILike } from 'typeorm';
 import {
@@ -62,6 +70,7 @@ import path, { join } from 'path';
 import fs, { readFileSync } from 'fs';
 
 import axios from 'axios';
+import { url } from 'inspector';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('dotenv').config({
@@ -127,6 +136,10 @@ export class MasterService implements IMasterService {
     private readonly userMasterRepository: Repository<BRI_AuthUsers>,
     @InjectRepository(BRI_AuthUsersHistory)
     private readonly userHistRepository: Repository<BRI_AuthUsersHistory>,
+    @InjectRepository(BRI_EmployeeDepartmentMap)
+    private readonly employeeDepartmentRepository: Repository<BRI_EmployeeDepartmentMap>,
+    @InjectRepository(BRI_EmployeeDepartmentMappingHistory)
+    private readonly employeeDepartmentHistoryRepository: Repository<BRI_EmployeeDepartmentMappingHistory>,
     private readonly mailerService: MailerService,
   ) {
     this.secret = 'JWT_SECRET';
@@ -223,7 +236,7 @@ export class MasterService implements IMasterService {
     try {
       if (dto.employee_id == 0) {
         const empTbl = new BRI_MasterEmployee();
-        empTbl.DepartmentId = dto.department_id;
+        //  empTbl.DepartmentId = dto.department_id;
         empTbl.Desigination = dto.desigination;
         empTbl.EmailId = dto.email_id;
         empTbl.EmployeeCode = dto.employee_code;
@@ -235,7 +248,7 @@ export class MasterService implements IMasterService {
         const empDb = await this.employeeRepository.save(empTbl);
         if (empDb) {
           const empHistTbl = new BRI_MasterEmployeeHistory();
-          empHistTbl.DepartmentId = dto.department_id;
+          //   empHistTbl.DepartmentId = dto.department_id;
           empHistTbl.Desigination = dto.desigination;
           empTbl.EmailId = dto.email_id;
           empHistTbl.EmployeeCode = dto.employee_code;
@@ -247,6 +260,40 @@ export class MasterService implements IMasterService {
           empHistTbl.created_on = new Date();
           await this.employeeHistoryRepository.save(empHistTbl);
         }
+
+        if (dto.departments.length > 0) {
+          const [result, total] =
+            await this.employeeDepartmentRepository.findAndCount({
+              where: {
+                EmployeeId: empDb.EmployeeId,
+                IsActive: true,
+              },
+            });
+          for await (const id of dto.departments) {
+            const filteredResult = result.filter((x) => x.DepartmentId === id);
+            if (filteredResult.length === 0) {
+              const empDepTbl = new BRI_EmployeeDepartmentMap();
+              empDepTbl.CreatedBy = dto.userId;
+              empDepTbl.CreatedOn = new Date();
+              empDepTbl.DepartmentId = id;
+              empDepTbl.IsActive = true;
+              empDepTbl.EmployeeId = empDb.EmployeeId;
+              const empDepDb =
+                await this.employeeDepartmentRepository.save(empDepTbl);
+              if (empDepDb) {
+                const histTbl = new BRI_EmployeeDepartmentMappingHistory();
+                histTbl.CreatedBy = dto.userId;
+                histTbl.CreatedOn = new Date();
+                histTbl.DepartmentId = id;
+                histTbl.IsActive = true;
+                histTbl.MapId = empDepDb.MapId;
+                histTbl.EmployeeId = dto.employee_id;
+                await this.employeeDepartmentHistoryRepository.save(histTbl);
+              }
+            }
+          }
+        }
+
         return 'Saved successfully.';
       } else if (dto.employee_id > 0) {
         await this.employeeHistoryRepository.update(
@@ -260,15 +307,15 @@ export class MasterService implements IMasterService {
             EmployeeName: dto.employee_name,
             Desigination: dto.desigination,
             EmailId: dto.email_id,
-            DepartmentId: dto.department_id,
+            //    DepartmentId: dto.department_id,
             modified_by: dto.userId,
             modified_on: new Date(),
-            IsActive: dto.IsActive 
+            IsActive: dto.IsActive,
           },
         );
 
         const empHistTbl = new BRI_MasterEmployeeHistory();
-        empHistTbl.DepartmentId = dto.department_id;
+        //    empHistTbl.DepartmentId = dto.department_id;
         empHistTbl.Desigination = dto.desigination;
         empHistTbl.EmployeeCode = dto.employee_code;
         empHistTbl.EmployeeName = dto.employee_name;
@@ -280,6 +327,65 @@ export class MasterService implements IMasterService {
         empHistTbl.EmployeeId = dto.employee_id;
         await this.employeeHistoryRepository.save(empHistTbl);
 
+        if (dto.departments.length > 0) {
+          const [result, total] =
+            await this.employeeDepartmentRepository.findAndCount({
+              where: {
+                EmployeeId: dto.employee_id,
+                IsActive: true,
+              },
+            });
+          // department changed
+          for await (const emp of result) {
+            const depIndex = dto.departments.findIndex(
+              (x) => x === emp.DepartmentId,
+            );
+            if (depIndex < 0) {
+              const empDepDb = await this.employeeDepartmentRepository.update(
+                emp.MapId,
+                {
+                  IsActive: false,
+                  ModifiedBy: dto.userId,
+                  ModifiedOn: new Date(),
+                },
+              );
+
+              if (empDepDb.affected > 0) {
+                const histTbl = new BRI_EmployeeDepartmentMappingHistory();
+                histTbl.CreatedBy = dto.userId;
+                histTbl.CreatedOn = new Date();
+                histTbl.DepartmentId = emp.DepartmentId;
+                histTbl.EmployeeId = dto.employee_id;
+                histTbl.IsActive = false;
+                histTbl.MapId = emp.MapId;
+                await this.employeeDepartmentHistoryRepository.save(histTbl);
+              }
+            }
+          }
+          for await (const id of dto.departments) {
+            const filteredResult = result.filter((x) => x.DepartmentId === id);
+            if (filteredResult.length === 0) {
+              const empDepTbl = new BRI_EmployeeDepartmentMap();
+              empDepTbl.CreatedBy = dto.userId;
+              empDepTbl.CreatedOn = new Date();
+              empDepTbl.DepartmentId = id;
+              empDepTbl.IsActive = true;
+              empDepTbl.EmployeeId = dto.employee_id;
+              const empDepDb =
+                await this.employeeDepartmentRepository.save(empDepTbl);
+              if (empDepDb) {
+                const histTbl = new BRI_EmployeeDepartmentMappingHistory();
+                histTbl.CreatedBy = dto.userId;
+                histTbl.CreatedOn = new Date();
+                histTbl.DepartmentId = id;
+                histTbl.IsActive = true;
+                histTbl.MapId = empDepDb.MapId;
+                histTbl.EmployeeId = dto.employee_id;
+                await this.employeeDepartmentHistoryRepository.save(histTbl);
+              }
+            }
+          }
+        }
         return 'Update successfully.';
       }
     } catch (e) {
@@ -295,7 +401,7 @@ export class MasterService implements IMasterService {
     try {
       return await this.departmentRepository.find({
         select: { DepartmentId: true, DepartmentName: true },
-        where: { IsActive: true, LocationId: subsidiary_id },
+        where: { IsActive: true, SubsidiaryId: subsidiary_id },
       });
     } catch (e) {
       console.log(e, ' error');
@@ -316,6 +422,21 @@ export class MasterService implements IMasterService {
     } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async employee_department_list(employee_id: number): Promise<any> {
+    try {
+      return await this.departmentRepository.query(
+        'select * from BRI_View_EmployeeDepartmentList where EmployeeId=' +
+          employee_id,
+      );
+    } catch (e) {
+      console.log(e, ' error');
+      throw new HttpException(
+        { message: 'Internal Server Error.' + e },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -402,6 +523,7 @@ export class MasterService implements IMasterService {
 
   async email_alert(dto: newMailAlertDto): Promise<any> {
     try {
+      console.log(dto,' new email alert dto');
       if (dto.alert_id == 0) {
         const alertTbl = new BRI_MasterEmailAlert();
         alertTbl.AlertCode = dto.alert_code;
@@ -410,6 +532,9 @@ export class MasterService implements IMasterService {
         alertTbl.SubsidiaryId = dto.subsidiary_id;
         alertTbl.created_by = dto.userId;
         alertTbl.created_on = new Date();
+        alertTbl.bccEmail = dto.bccEmail;
+        alertTbl.ccEmail = dto.ccEmail;
+        alertTbl.toEmail = dto.toEmail;
         const alertDb = await this.alertMasterRepository.save(alertTbl);
 
         if (alertDb) {
@@ -422,48 +547,55 @@ export class MasterService implements IMasterService {
           alertHisTbl.created_by = dto.userId;
           alertHisTbl.created_on = new Date();
           alertHisTbl.IsActive = dto.isActive;
+          alertHisTbl.bccEmail = dto.bccEmail;
+          alertHisTbl.ccEmail = dto.ccEmail;
+          alertHisTbl.toEmail = dto.toEmail;
           alertHisTbl.IsLastRecord = 1;
           alertHisTbl.SubsidiaryId = dto.subsidiary_id;
           alertHisTbl.created_by = dto.userId;
           alertHisTbl.created_on = new Date();
           await this.alertMasterHistoryRepository.save(alertHisTbl);
 
-          if (dto.recipient.length > 0) {
-            for await (const re of dto.recipient) {
-              const recipient = new BRI_EmailAlertRecipient();
-              recipient.AlertId = alertDb.AlertId;
-              recipient.EmployeeId = re.employee_Id;
-              recipient.IsActive = 1;
-              recipient.created_by = dto.userId;
-              recipient.created_on = new Date();
-              const db = await this.alertRecipientRepository.save(recipient);
-              if (db) {
-                const hist = new BRI_EmailAlertRecipientHistory();
-                hist.RecipientId = db.RecipientId;
-                hist.AlertId = dto.alert_id;
-                hist.EmployeeId = re.employee_Id;
-                hist.IsLastRecord = 1;
-                hist.created_by = dto.userId;
-                hist.created_on = new Date();
-                await this.alertRecipientHistoryRepository.save(hist);
-              }
-            }
-          }
+          // if (dto.recipient.length > 0) {
+          //   for await (const re of dto.recipient) {
+          //     const recipient = new BRI_EmailAlertRecipient();
+          //     recipient.AlertId = alertDb.AlertId;
+          //     recipient.EmployeeId = re.employee_Id;
+          //     recipient.IsActive = 1;
+          //     recipient.created_by = dto.userId;
+          //     recipient.created_on = new Date();
+          //     const db = await this.alertRecipientRepository.save(recipient);
+          //     if (db) {
+          //       const hist = new BRI_EmailAlertRecipientHistory();
+          //       hist.RecipientId = db.RecipientId;
+          //       hist.AlertId = dto.alert_id;
+          //       hist.EmployeeId = re.employee_Id;
+          //       hist.IsLastRecord = 1;
+          //       hist.created_by = dto.userId;
+          //       hist.created_on = new Date();
+          //       await this.alertRecipientHistoryRepository.save(hist);
+          //     }
+          //   }
+          // }
         }
         return 'Saved successfully.';
       } else if (dto.alert_id > 0) {
-        await this.alertRecipientHistoryRepository.update(
-          { AlertId: dto.alert_id, IsLastRecord: 1 },
-          { IsLastRecord: 0 },
-        );
+        // await this.alertRecipientHistoryRepository.update(
+        //   { AlertId: dto.alert_id, IsLastRecord: 1 },
+        //   { IsLastRecord: 0 },
+        // );
         await this.alertMasterRepository.update(
           { AlertId: dto.alert_id },
           {
             AlertCode: dto.alert_code,
             AlertName: dto.alert_name,
+            ccEmail: dto.ccEmail,
+            bccEmail: dto.bccEmail,
+            toEmail: dto.toEmail,
             IsActive: dto.isActive,
             modified_by: dto.userId,
             modified_on: new Date(),
+            SubsidiaryId: dto.subsidiary_id,
           },
         );
 
@@ -480,79 +612,83 @@ export class MasterService implements IMasterService {
         alertHisTbl.SubsidiaryId = dto.subsidiary_id;
         alertHisTbl.created_by = dto.userId;
         alertHisTbl.created_on = new Date();
+        alertHisTbl.bccEmail = dto.bccEmail;
+        alertHisTbl.ccEmail = dto.ccEmail;
+        alertHisTbl.toEmail = dto.toEmail;
+        alertHisTbl.SubsidiaryId = dto.subsidiary_id;
         await this.alertMasterHistoryRepository.save(alertHisTbl);
 
-        if (dto.recipient.length > 0) {
-          for await (const re of dto.recipient) {
-            const [items, totalCount] =
-              await this.alertRecipientRepository.findAndCount({
-                where: { AlertId: dto.alert_id, EmployeeId: re.employee_Id },
-              });
-            if (totalCount == 0) {
-              const recipient = new BRI_EmailAlertRecipient();
-              recipient.AlertId = dto.alert_id;
-              recipient.EmployeeId = re.employee_Id;
-              recipient.IsActive = 1;
-              recipient.created_by = dto.userId;
-              recipient.created_on = new Date();
-              const db = await this.alertRecipientRepository.save(recipient);
-              if (db) {
-                const hist = new BRI_EmailAlertRecipientHistory();
-                hist.RecipientId = db.RecipientId;
-                hist.AlertId = dto.alert_id;
-                hist.EmployeeId = re.employee_Id;
-                hist.IsLastRecord = 1;
-                hist.IsActive = 1;
-                hist.created_by = dto.userId;
-                hist.created_on = new Date();
-                await this.alertRecipientHistoryRepository.save(hist);
-              }
-            } else if (totalCount > 0 && items[0].IsActive == 0) {
-              await this.alertRecipientRepository.update(
-                { RecipientId: items[0].RecipientId },
-                { IsActive: 1 },
-              );
+        // if (dto.recipient.length > 0) {
+        //   for await (const re of dto.recipient) {
+        //     const [items, totalCount] =
+        //       await this.alertRecipientRepository.findAndCount({
+        //         where: { AlertId: dto.alert_id, EmployeeId: re.employee_Id },
+        //       });
+        //     if (totalCount == 0) {
+        //       const recipient = new BRI_EmailAlertRecipient();
+        //       recipient.AlertId = dto.alert_id;
+        //       recipient.EmployeeId = re.employee_Id;
+        //       recipient.IsActive = 1;
+        //       recipient.created_by = dto.userId;
+        //       recipient.created_on = new Date();
+        //       const db = await this.alertRecipientRepository.save(recipient);
+        //       if (db) {
+        //         const hist = new BRI_EmailAlertRecipientHistory();
+        //         hist.RecipientId = db.RecipientId;
+        //         hist.AlertId = dto.alert_id;
+        //         hist.EmployeeId = re.employee_Id;
+        //         hist.IsLastRecord = 1;
+        //         hist.IsActive = 1;
+        //         hist.created_by = dto.userId;
+        //         hist.created_on = new Date();
+        //         await this.alertRecipientHistoryRepository.save(hist);
+        //       }
+        //     } else if (totalCount > 0 && items[0].IsActive == 0) {
+        //       await this.alertRecipientRepository.update(
+        //         { RecipientId: items[0].RecipientId },
+        //         { IsActive: 1 },
+        //       );
 
-              const hist = new BRI_EmailAlertRecipientHistory();
-              hist.RecipientId = items[0].RecipientId;
-              hist.AlertId = items[0].AlertId;
-              hist.EmployeeId = items[0].EmployeeId;
-              hist.IsLastRecord = 1;
-              hist.IsActive = 1;
-              hist.created_by = dto.userId;
-              hist.created_on = new Date();
-              await this.alertRecipientHistoryRepository.save(hist);
-            }
-          }
+        //       const hist = new BRI_EmailAlertRecipientHistory();
+        //       hist.RecipientId = items[0].RecipientId;
+        //       hist.AlertId = items[0].AlertId;
+        //       hist.EmployeeId = items[0].EmployeeId;
+        //       hist.IsLastRecord = 1;
+        //       hist.IsActive = 1;
+        //       hist.created_by = dto.userId;
+        //       hist.created_on = new Date();
+        //       await this.alertRecipientHistoryRepository.save(hist);
+        //     }
+        //   }
 
-          const [items, totalCount] =
-            await this.alertRecipientRepository.findAndCount({
-              where: { AlertId: dto.alert_id, IsActive: 1 },
-            });
-          if (totalCount > 0) {
-            for await (const obj of items) {
-              const index = dto.recipient.findIndex(
-                (x: { employee_Id: number }) => x.employee_Id == obj.EmployeeId,
-              );
-              if (index < 0) {
-                await this.alertRecipientRepository.update(
-                  { RecipientId: obj.RecipientId },
-                  { IsActive: 0 },
-                );
+        //   const [items, totalCount] =
+        //     await this.alertRecipientRepository.findAndCount({
+        //       where: { AlertId: dto.alert_id, IsActive: 1 },
+        //     });
+        //   if (totalCount > 0) {
+        //     for await (const obj of items) {
+        //       const index = dto.recipient.findIndex(
+        //         (x: { employee_Id: number }) => x.employee_Id == obj.EmployeeId,
+        //       );
+        //       if (index < 0) {
+        //         await this.alertRecipientRepository.update(
+        //           { RecipientId: obj.RecipientId },
+        //           { IsActive: 0 },
+        //         );
 
-                const hist = new BRI_EmailAlertRecipientHistory();
-                hist.RecipientId = obj.RecipientId;
-                hist.AlertId = obj.AlertId;
-                hist.EmployeeId = obj.EmployeeId;
-                hist.IsLastRecord = 1;
-                hist.IsActive = 0;
-                hist.created_by = dto.userId;
-                hist.created_on = new Date();
-                await this.alertRecipientHistoryRepository.save(hist);
-              }
-            }
-          }
-        }
+        //         const hist = new BRI_EmailAlertRecipientHistory();
+        //         hist.RecipientId = obj.RecipientId;
+        //         hist.AlertId = obj.AlertId;
+        //         hist.EmployeeId = obj.EmployeeId;
+        //         hist.IsLastRecord = 1;
+        //         hist.IsActive = 0;
+        //         hist.created_by = dto.userId;
+        //         hist.created_on = new Date();
+        //         await this.alertRecipientHistoryRepository.save(hist);
+        //       }
+        //     }
+        //   }
+        // }
 
         return 'Update successfully.';
       }
@@ -612,18 +748,21 @@ export class MasterService implements IMasterService {
 
   async drp_taxnomy_list(subsidiary_id: any, type: any): Promise<any> {
     try {
-      if(subsidiary_id<0)
-      {
-      return await this.drpTaxnomyRepository.find({
-        select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
-        where: { IsActive:true, TaxnomyType: type },
-      });
-    }else if(subsidiary_id>0){
-      return await this.drpTaxnomyRepository.find({
-        select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
-        where: { IsActive:true, TaxnomyType: type,SubsidiaryId:subsidiary_id },
-      });
-    }
+      if (subsidiary_id < 0) {
+        return await this.drpTaxnomyRepository.find({
+          select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
+          where: { IsActive: true, TaxnomyType: type },
+        });
+      } else if (subsidiary_id > 0) {
+        return await this.drpTaxnomyRepository.find({
+          select: { TaxnomyId: true, TaxnomyName: true, TaxnomyCode: true },
+          where: {
+            IsActive: true,
+            TaxnomyType: type,
+            SubsidiaryId: subsidiary_id,
+          },
+        });
+      }
     } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
@@ -753,6 +892,27 @@ export class MasterService implements IMasterService {
             menuGrpTblHist.created_on = new Date();
             await this.menuGroupHistoryRepository.save(menuGrpTblHist);
           }
+          else if(obj==null)
+          {
+            const menuGrpTbl = new BRI_MasterGroupMenu();
+            menuGrpTbl.GroupId = gr;
+            menuGrpTbl.MenuId = dto.menu_id;
+            menuGrpTbl.IsActive = true;
+            menuGrpTbl.created_by = dto.userId;
+            menuGrpTbl.created_on = new Date();
+            const menuGrpDb = await this.menuGroupRepository.save(menuGrpTbl);
+            if (menuGrpDb) {
+              const menuGrpTblHist = new BRI_MasterGroupMenuHistory();
+              menuGrpTblHist.GroupId = gr;
+              menuGrpTblHist.MenuId = dto.menu_id;
+              menuGrpTblHist.GroupMenuId = menuGrpDb.GroupMenuId;
+              menuGrpTblHist.IsActive = true;
+              menuGrpTblHist.IsLastRecord = true;
+              menuGrpTblHist.created_by = dto.userId;
+              menuGrpTblHist.created_on = new Date();
+              await this.menuGroupHistoryRepository.save(menuGrpTblHist);
+            }
+          }
         }
         for await (const mg of menuGroupList) {
           const index = dto.menu_group.findIndex((x) => x == mg.GroupId);
@@ -798,15 +958,15 @@ export class MasterService implements IMasterService {
         [field]: sort,
       };
       const [result, total] = await this.menuMasterRepository.findAndCount({
-        where: {
-          MenuName: ILike(`%${tblDto.search}%`),
-          Url: ILike(`%${tblDto.search}%`),
-        },
+        where: [
+          {MenuName: ILike(`%${tblDto.search}%`)},{Url:ILike(`%${tblDto.search}%`)}
+        ],
+      
         order: order_by,
         take: take,
         skip: skip,
       });
-      console.log(result, ' result');
+      console.log(tblDto.search,result, ' result');
       return { result, total };
     } catch (e) {
       console.log(e, 'error');
@@ -950,7 +1110,10 @@ export class MasterService implements IMasterService {
 
   async masterData(): Promise<any> {
     try {
-      await this.workORderMasterData();
+      const data = await this.commonService.makeNetSuiteGetApiCall(
+        '/app/site/hosting/restlet.nl?script=722&deploy=1',
+      );
+      return data.param;
     } catch (e) {
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
@@ -958,12 +1121,23 @@ export class MasterService implements IMasterService {
       );
     }
   }
-
+  @Cron('*/5555 * * * * *', {
+ // @Cron(CronExpression.EVERY_10_MINUTES, {
+    name: 'MasterData_cron',
+  })
   async workORderMasterData() {
+    console.log('crone started');
+    const job = this.schedulerRegistry.getCronJob('MasterData_cron');
+    if (job) {
+      job.stop();
+      console.log('Cron next job stopped');
+    }
+
     try {
-      const body = await axios.get(
-        'https://internal4netsuiteapi.app-brisigns.com/api/masterData',
+      const body = await this.commonService.makeNetSuiteGetApiCall(
+        '/app/site/hosting/restlet.nl?script=722&deploy=1',
       );
+
       //console.log(body.data.param, 'nest js body');
       const loc = await this.drpTaxnomyRepository.find({
         where: { TaxnomyType: 'Location' },
@@ -977,41 +1151,39 @@ export class MasterService implements IMasterService {
       const workOrderStepStatus = await this.drpTaxnomyRepository.find({
         where: { TaxnomyType: 'DepartmentStatus', IsActive: true },
       });
-      
-      for await (const obj of body.data.param) {
-        let department =[];
-        department= await this.departmentRepository.find();
-        let workDb =[];
-        workDb= await this.workorderMasterRepository.find({
-          where: 
-            [{NetsuiteID: obj.internalid,
-            WorkOrderNo: obj.workorder_number}]
-          ,
+      const filterdData = body.param.filter((x) => x.subsidiary === 'BRI UAE');
+      for await (const obj of filterdData) {
+        let department = [];
+        department = await this.departmentRepository.find();
+        let workDb = [];
+        workDb = await this.workorderMasterRepository.find({
+          where: [
+            { NetsuiteID: obj.internalid, WorkOrderNo: obj.workorder_number },
+          ],
         });
-        console.log(workDb,obj.workorder_number,' workorder')
+        //  console.log(workDb,obj.workorder_number,' workorder')
         const sub = subsidary.find((x) => x.TaxnomyName == obj.subsidiary);
-        console.log(department,'department');
-        const locData = loc.find(
-          (x) => x.TaxnomyName == obj.document_location,
-        );
+        // console.log(department,'department');
+        const locData = loc.find((x) => x.TaxnomyName == obj.document_location);
         const dep = department.find(
           (x) =>
             x.DepartmentName == obj.department_name &&
-            x.SubsidiaryId == sub.TaxnomyId &&
-            x.LocationId==locData.TaxnomyId
+            x.SubsidiaryId == sub.TaxnomyId,
         );
-        console.log(locData,obj.document_location);
-        
+        // console.log(locData,obj.document_location);
+
         if (dep == null) {
           const depTbl = new BRI_MasterDepartment();
           depTbl.DepartmentCode = obj.department_name;
           depTbl.DepartmentName = obj.department_name;
           depTbl.IsActive = true;
           depTbl.SubsidiaryId = sub.TaxnomyId;
-          depTbl.LocationId=locData.TaxnomyId;
+          //    depTbl.LocationId=locData.TaxnomyId;
           depTbl.CreatedBy = -1;
           depTbl.CreatedOn = new Date();
-          const db = await this.departmentRepository.save(depTbl,{reload:true});
+          const db = await this.departmentRepository.save(depTbl, {
+            reload: true,
+          });
           department = await this.departmentRepository.find();
           //department.push(db);
         }
@@ -1034,19 +1206,21 @@ export class MasterService implements IMasterService {
           wo.SubsidiaryID = sub.TaxnomyId;
           wo.WorkOrderNo = obj.workorder_number;
           wo.created_on = new Date();
-          wo.BusinessUnit=obj.business_unit_name;
-          wo.BusinessUnitId=obj.business_unit_id;
+          wo.BusinessUnit = obj.business_unit_name;
+          wo.BusinessUnitId = obj.business_unit_id;
           const s = workStatus.find((x) => x.TaxnomyCode == 'YetToStart');
           wo.StatusID = s.TaxnomyId;
-          const ws = await this.workorderMasterRepository.save(wo,{reload:true});
+          const ws = await this.workorderMasterRepository.save(wo, {
+            reload: true,
+          });
           //break;
           if (ws.WorkOrderID > 0) {
             const depart = department.find(
               (x) =>
                 x.DepartmentName == obj.department_name &&
                 x.SubsidiaryId == sub.TaxnomyId &&
-                x.IsActive == true &&
-                x.LocationId==locData.TaxnomyId
+                x.IsActive == true,
+              // && x.LocationId==locData.TaxnomyId
             );
             const wsstatus = workOrderStepStatus.find(
               (x) => x.TaxnomyCode == 'YetToStart',
@@ -1091,24 +1265,26 @@ export class MasterService implements IMasterService {
             woH.WorkOrderNo = obj.workorder_number;
             woH.created_on = new Date();
             woH.StatusID = ws.StatusID;
-            woH.BusinessUnit=obj.business_unit_name;
-            woH.BusinessUnitId=obj.business_unit_id;
+            woH.BusinessUnit = obj.business_unit_name;
+            woH.BusinessUnitId = obj.business_unit_id;
             const wsH = await this.workorderMasterHistoryRepository.save(woH);
           }
         } else if (workDb.length > 0) {
           const workStepList = await this.workorderStepsRepository.find({
             where: [
-           {   DepartmentName: obj.department_name,
-              WorkOrderID: workDb[0].WorkOrderID,
-          }],
+              {
+                DepartmentName: obj.department_name,
+                WorkOrderID: workDb[0].WorkOrderID,
+              },
+            ],
           });
           if (workStepList.length == 0) {
             const sub = subsidary.find((x) => x.TaxnomyName == obj.subsidiary);
             const dep = department.find(
               (x) =>
                 x.DepartmentName == obj.department_name &&
-                x.SubsidiaryId == sub.TaxnomyId &&
-                x.LocationId==locData.TaxnomyId
+                x.SubsidiaryId == sub.TaxnomyId,
+              // &&              x.LocationId==locData.TaxnomyId
             );
             const wsstatus = workOrderStepStatus.find(
               (x) => x.TaxnomyCode == 'YetToStart',
@@ -1141,19 +1317,35 @@ export class MasterService implements IMasterService {
     } catch (e) {
       console.log('crone job running', e);
     }
+
+    job.start();
+    console.log(job.nextDate(), 'job next');
   }
 
   async new_work_order_list(dto: allWorkorderTableDto): Promise<any> {
     try {
-      const location=dto.location==null?null:'"'+dto.location+'"';
-      const ReleaseDate=dto.ReleaseDate==null?null:'"'+dto.ReleaseDate+'"';
-      const order_by=dto.order_by==null?null:'"'+dto.order_by+'"';
-      const sort=dto.sort==null?null:'"'+dto.sort+'"';
-      const search=dto.search==null?null:'"'+dto.search+'"';
+      const location = dto.location == null ? null : '"' + dto.location + '"';
+      const ReleaseDate =
+        dto.ReleaseDate == null ? null : '"' + dto.ReleaseDate + '"';
+      const order_by = dto.order_by == null ? null : '"' + dto.order_by + '"';
+      const sort = dto.sort == null ? null : '"' + dto.sort + '"';
+      const search = dto.search == null ? null : '"' + dto.search + '"';
       const param =
-        'exec BRI_USP_AllWorkOrder ' +location+','+ ReleaseDate+',' +dto.start+',' +dto.page_size +','+ order_by
-        +','+sort+','+search;
-        console.log(param,'sp params');
+        'exec BRI_USP_AllWorkOrder ' +
+        location +
+        ',' +
+        ReleaseDate +
+        ',' +
+        dto.start +
+        ',' +
+        dto.page_size +
+        ',' +
+        order_by +
+        ',' +
+        sort +
+        ',' +
+        search;
+      console.log(param, 'sp params');
       const data = this.workorderMasterRepository.query(param);
       return data;
     } catch (e) {
@@ -1165,143 +1357,197 @@ export class MasterService implements IMasterService {
   }
 
   async bulk_activeInactive(dto: bulkActivInActiveDto): Promise<any> {
-    try{
-      if(dto.master==='EmailAlert')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.alertMasterRepository.findOne({where:{AlertId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.alertMasterHistoryRepository.findOne({where:{AlertId:id,IsLastRecord:1}});
-              const mu=await this.alertMasterRepository.update({AlertId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+    try {
+      if (dto.master === 'EmailAlert') {
+        for await (const id of dto.masterId) {
+          const exist = await this.alertMasterRepository.findOne({
+            where: { AlertId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.alertMasterHistoryRepository.findOne({
+              where: { AlertId: id, IsLastRecord: 1 },
+            });
+            const mu = await this.alertMasterRepository.update(
+              { AlertId: id },
               {
-                const hu=await this.alertMasterHistoryRepository.update({AlertId:id,IsLastRecord:1},{IsLastRecord:0});
-                hist.IsActive=exist.IsActive?0:1;
-                hist.HistId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.alertMasterHistoryRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? 0 : 1,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.alertMasterHistoryRepository.update(
+                { AlertId: id, IsLastRecord: 1 },
+                { IsLastRecord: 0 },
+              );
+              hist.IsActive = exist.IsActive ? 0 : 1;
+              hist.HistId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.alertMasterHistoryRepository.save(hist);
             }
-
           }
-      }
-      else if(dto.master==='Machinery')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.machineRepository.findOne({where:{MachineId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.macHistoryRepository.findOne({where:{MachineId:id,IsLastRecord:1}});
-              const mu=await this.machineRepository.update({MachineId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+        }
+      } else if (dto.master === 'Machinery') {
+        for await (const id of dto.masterId) {
+          const exist = await this.machineRepository.findOne({
+            where: { MachineId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.macHistoryRepository.findOne({
+              where: { MachineId: id, IsLastRecord: 1 },
+            });
+            const mu = await this.machineRepository.update(
+              { MachineId: id },
               {
-                const hu=await this.macHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
-                hist.IsActive=exist.IsActive?0:1;
-                hist.HistoryId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.macHistoryRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? 0 : 1,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.macHistoryRepository.update(
+                { HistoryId: hist.HistoryId, IsLastRecord: 1 },
+                { IsLastRecord: 0 },
+              );
+              hist.IsActive = exist.IsActive ? 0 : 1;
+              hist.HistoryId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.macHistoryRepository.save(hist);
             }
-
           }
-      }
-      else if(dto.master==='Employee')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.employeeRepository.findOne({where:{EmployeeId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.employeeHistoryRepository.findOne({where:{EmployeeId:id,isLastRecord:1}});
-              const mu=await this.employeeRepository.update({EmployeeId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+        }
+      } else if (dto.master === 'Employee') {
+        for await (const id of dto.masterId) {
+          const exist = await this.employeeRepository.findOne({
+            where: { EmployeeId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.employeeHistoryRepository.findOne({
+              where: { EmployeeId: id, isLastRecord: 1 },
+            });
+            const mu = await this.employeeRepository.update(
+              { EmployeeId: id },
               {
-                const hu=await this.employeeHistoryRepository.update({HistoryId:hist.HistoryId,isLastRecord:1},{isLastRecord:0});
-                hist.IsActive=exist.IsActive?0:1;
-                hist.HistoryId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.employeeHistoryRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? 0 : 1,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.employeeHistoryRepository.update(
+                { HistoryId: hist.HistoryId, isLastRecord: 1 },
+                { isLastRecord: 0 },
+              );
+              hist.IsActive = exist.IsActive ? 0 : 1;
+              hist.HistoryId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.employeeHistoryRepository.save(hist);
             }
-
           }
-      }
-      else if(dto.master==='Menu')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.menuMasterRepository.findOne({where:{MenuId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.menuMasterHistoryRepository.findOne({where:{MenuId:id,IsLastRecord:true}});
-              const mu=await this.menuMasterRepository.update({MenuId:id},{IsActive:exist.IsActive?false:true,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+        }
+      } else if (dto.master === 'Menu') {
+        for await (const id of dto.masterId) {
+          const exist = await this.menuMasterRepository.findOne({
+            where: { MenuId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.menuMasterHistoryRepository.findOne({
+              where: { MenuId: id, IsLastRecord: true },
+            });
+            const mu = await this.menuMasterRepository.update(
+              { MenuId: id },
               {
-                const hu=await this.menuMasterHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:true},{IsLastRecord:false});
-                hist.IsActive=exist.IsActive?false:true;
-                hist.HistoryId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.menuMasterHistoryRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? false : true,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.menuMasterHistoryRepository.update(
+                { HistoryId: hist.HistoryId, IsLastRecord: true },
+                { IsLastRecord: false },
+              );
+              hist.IsActive = exist.IsActive ? false : true;
+              hist.HistoryId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.menuMasterHistoryRepository.save(hist);
             }
-
           }
-      }
-      else if(dto.master==='Roles')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.roleRepository.findOne({where:{RoleId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.roleHistoryRepository.findOne({where:{RoleId:id,IsLastRecord:1}});
-              const mu=await this.roleRepository.update({RoleId:id},{IsActive:exist.IsActive?false:true,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+        }
+      } else if (dto.master === 'Roles') {
+        for await (const id of dto.masterId) {
+          const exist = await this.roleRepository.findOne({
+            where: { RoleId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.roleHistoryRepository.findOne({
+              where: { RoleId: id, IsLastRecord: 1 },
+            });
+            const mu = await this.roleRepository.update(
+              { RoleId: id },
               {
-                const hu=await this.roleHistoryRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
-                hist.IsActive=exist.IsActive?false:true;
-                hist.HistoryId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.roleHistoryRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? false : true,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.roleHistoryRepository.update(
+                { HistoryId: hist.HistoryId, IsLastRecord: 1 },
+                { IsLastRecord: 0 },
+              );
+              hist.IsActive = exist.IsActive ? false : true;
+              hist.HistoryId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.roleHistoryRepository.save(hist);
             }
-
           }
-      }
-      else if(dto.master==='User')
-      {
-          for await(const id of dto.masterId)
-          {
-            const exist=await this.userMasterRepository.findOne({where:{UserId:id},select:{IsActive:true}});
-            if(exist)
-            {
-              const hist=await this.userHistRepository.findOne({where:{UserId:id,IsLastRecord:1}});
-              const mu=await this.userMasterRepository.update({UserId:id},{IsActive:exist.IsActive?0:1,modified_by:dto.userId,modified_on:new Date()});
-              if(mu.affected>0)
+        }
+      } else if (dto.master === 'User') {
+        for await (const id of dto.masterId) {
+          const exist = await this.userMasterRepository.findOne({
+            where: { UserId: id },
+            select: { IsActive: true },
+          });
+          if (exist) {
+            const hist = await this.userHistRepository.findOne({
+              where: { UserId: id, IsLastRecord: 1 },
+            });
+            const mu = await this.userMasterRepository.update(
+              { UserId: id },
               {
-                const hu=await this.userHistRepository.update({HistoryId:hist.HistoryId,IsLastRecord:1},{IsLastRecord:0});
-                hist.IsActive=exist.IsActive?0:1;
-                hist.HistoryId=null;
-                hist.created_by=dto.userId;
-                hist.created_on=new Date();
-                await this.userHistRepository.save(hist);
-              }
+                IsActive: exist.IsActive ? 0 : 1,
+                modified_by: dto.userId,
+                modified_on: new Date(),
+              },
+            );
+            if (mu.affected > 0) {
+              const hu = await this.userHistRepository.update(
+                { HistoryId: hist.HistoryId, IsLastRecord: 1 },
+                { IsLastRecord: 0 },
+              );
+              hist.IsActive = exist.IsActive ? 0 : 1;
+              hist.HistoryId = null;
+              hist.created_by = dto.userId;
+              hist.created_on = new Date();
+              await this.userHistRepository.save(hist);
             }
-
           }
+        }
       }
 
       return 'Changes saved successfully.';
-
-    }catch (e) {
+    } catch (e) {
       console.log(e);
       throw new HttpException(
         { message: 'Internal Server Error.' + e },
@@ -1310,28 +1556,21 @@ export class MasterService implements IMasterService {
     }
   }
 
-  // @Cron('5 * * * * *', {
-  //   name: 'notifications',
+  // @Cron('*/5 * * * * *', {
+  //   name: 'MasterData_cron',
   // })
   async handleCron() {
+    const job = this.schedulerRegistry.getCronJob('notifications');
+    if (job) {
+      job.stop();
+      console.log('Cron job stopped');
+    }
+
     try {
-      console.log('crone job running waiting for previous one');
-      //await this.workORderMasterData();
-      console.log('crone job completed');
-      
-      const job = this.schedulerRegistry.getCronJob('notifications');
-      let dt =new Date();
-      
-      console.log(dt,' current date time');
-      dt.setMinutes(dt.getMinutes()+5);
-      console.log(dt,' new crone date time');
-      // const neDt=new Date(dt);
-      // job.setTime(dt);
-      // job.stop();
-      // console.log(job.lastDate());
+      console.log('crone job running');
     } catch (e) {}
-    console.log('crone job running');
-    this.logger.debug('Called when the current second is 45');
+    console.log(job.lastDate(), ' job.last date');
+    job.start();
   }
 
   async customResponse(

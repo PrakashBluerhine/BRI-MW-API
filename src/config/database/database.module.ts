@@ -43,7 +43,8 @@ require('dotenv').config({
         //     tableName: "query-result-cache"
         // }
       }),
-    }),
+      
+    })
   ],
   providers: [CustomConfigService],
 })
